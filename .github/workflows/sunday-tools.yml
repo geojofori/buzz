@@ -110,7 +110,7 @@ jobs:
           docker cp "${container}:/git-credential-nostr" "${output}/git-credential-nostr"
           chmod 0555 "${output}/buzz" "${output}/git-credential-nostr"
           file "${output}/buzz" "${output}/git-credential-nostr" | grep -c 'ELF 64-bit.*x86-64' | grep -qx 2
-          "${output}/buzz" --version >"${output}/buzz-version.txt"
+          "${output}/buzz" --help >"${output}/buzz-help.txt"
           (
             cd "${output}"
             sha256sum buzz git-credential-nostr > SHA256SUMS
