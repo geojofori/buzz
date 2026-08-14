@@ -92,7 +92,7 @@ jobs:
           cache-to: type=registry,ref=${{ env.IMAGE_NAME }}-buildcache:amd64,mode=max,compression=zstd
 
       - name: Attest tools image provenance
-        uses: actions/attest-build-provenance@e51982d73a08c2b68267295d53c2e5e06e88c2f1 # v3.3.0
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-name: ${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.build.outputs.digest }}
