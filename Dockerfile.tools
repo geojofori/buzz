@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1.7
+# Attested extraction-only image for the self-hosted Buzz CLI and NIP-98 Git helper.
+
+FROM rust@sha256:4c2fd73ef19c5ef9d54bee03b06b2839a392604fbfcd578ed948b71b37c1d7fb AS builder
+WORKDIR /build
+COPY . .
+RUN cargo build --release --locked \
+      -p buzz-cli --bin buzz \
+      -p git-credential-nostr --bin git-credential-nostr \
+      --jobs 2 \
+    && strip target/release/buzz target/release/git-credential-nostr
+
+FROM scratch
+ARG SOURCE_REVISION
+LABEL org.opencontainers.image.title="Buzz self-hosted tools" \
+      org.opencontainers.image.description="Extraction-only Buzz CLI and NIP-98 Git credential helper" \
+      org.opencontainers.image.source="https://github.com/geojofori/buzz" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}"
+COPY --from=builder /build/target/release/buzz /buzz
+COPY --from=builder /build/target/release/git-credential-nostr /git-credential-nostr

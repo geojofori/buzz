@@ -1,0 +1,115 @@
+name: Sunday self-hosted tools image
+
+on:
+  push:
+    tags: ["tools-v[0-9]*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver version without the tools-v prefix"
+        required: true
+
+concurrency:
+  group: sunday-tools-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  IMAGE_NAME: ${{ vars.GHCR_TOOLS_IMAGE != '' && vars.GHCR_TOOLS_IMAGE || 'ghcr.io/geojofori/buzz-tools' }}
+
+jobs:
+  build:
+    name: Build and attest linux/amd64 tools
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout immutable source
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify tag-bound tools source
+        id: source
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="${INPUT_VERSION:-${GITHUB_REF_NAME#tools-v}}"
+          expected_ref="refs/tags/tools-v${version}"
+          test "${GITHUB_REF}" = "${expected_ref}"
+          test "$(git rev-parse HEAD)" = "$(git rev-list -n 1 "${expected_ref}")"
+          object_type="$(git cat-file -t "${expected_ref}")"
+          test "${object_type}" = tag || test "${object_type}" = commit
+          printf 'version=%s\n' "${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+        with:
+          buildkitd-config-inline: |
+            [worker.oci]
+              max-parallelism = 2
+
+      - name: Log in to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract immutable metadata
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ steps.source.outputs.version }}
+            type=sha,prefix=sha-,format=long
+          labels: |
+            org.opencontainers.image.title=Buzz self-hosted tools
+            org.opencontainers.image.description=Extraction-only Buzz CLI and NIP-98 Git credential helper
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build and push tools image
+        id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: ./Dockerfile.tools
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: SOURCE_REVISION=${{ github.sha }}
+          cache-from: type=registry,ref=${{ env.IMAGE_NAME }}-buildcache:amd64
+          cache-to: type=registry,ref=${{ env.IMAGE_NAME }}-buildcache:amd64,mode=max,compression=zstd
+
+      - name: Attest tools image provenance
+        uses: actions/attest-build-provenance@e51982d73a08c2b68267295d53c2e5e06e88c2f1 # v3.3.0
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Publish summary
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo '### Sunday tools image'
+            echo
+            echo "Digest: \`${DIGEST}\`"
+            echo
+            echo 'Tags:'
+            echo '```'
+            echo "${TAGS}"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
