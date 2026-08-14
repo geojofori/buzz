@@ -91,12 +91,57 @@ jobs:
           cache-from: type=registry,ref=${{ env.IMAGE_NAME }}-buildcache:amd64
           cache-to: type=registry,ref=${{ env.IMAGE_NAME }}-buildcache:amd64,mode=max,compression=zstd
 
+      - name: Extract and bind exact image binaries
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          SOURCE_VERSION: ${{ steps.source.outputs.version }}
+        run: |
+          set -euo pipefail
+          output="${RUNNER_TEMP}/buzz-tools-linux-amd64"
+          container="sunday-tools-extract-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() {
+            docker container rm --force "${container}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          install -d -m 0700 "${output}"
+          docker pull --platform linux/amd64 "${IMAGE_NAME}@${IMAGE_DIGEST}"
+          docker create --name "${container}" --platform linux/amd64 "${IMAGE_NAME}@${IMAGE_DIGEST}" /buzz --version
+          docker cp "${container}:/buzz" "${output}/buzz"
+          docker cp "${container}:/git-credential-nostr" "${output}/git-credential-nostr"
+          chmod 0555 "${output}/buzz" "${output}/git-credential-nostr"
+          file "${output}/buzz" "${output}/git-credential-nostr" | grep -c 'ELF 64-bit.*x86-64' | grep -qx 2
+          "${output}/buzz" --version >"${output}/buzz-version.txt"
+          (
+            cd "${output}"
+            sha256sum buzz git-credential-nostr > SHA256SUMS
+          )
+          jq -n \
+            --arg image "${IMAGE_NAME}" \
+            --arg image_digest "${IMAGE_DIGEST}" \
+            --arg source_commit "${GITHUB_SHA}" \
+            --arg source_tag "tools-v${SOURCE_VERSION}" \
+            --arg workflow_run_id "${GITHUB_RUN_ID}" \
+            --arg buzz_sha256 "$(sha256sum "${output}/buzz" | cut -d' ' -f1)" \
+            --arg helper_sha256 "$(sha256sum "${output}/git-credential-nostr" | cut -d' ' -f1)" \
+            --argjson buzz_bytes "$(stat -c %s "${output}/buzz")" \
+            --argjson helper_bytes "$(stat -c %s "${output}/git-credential-nostr")" \
+            '{schema_version:1,image:$image,image_digest:$image_digest,source_commit:$source_commit,source_tag:$source_tag,workflow_run_id:($workflow_run_id|tonumber),binaries:{buzz:{sha256:$buzz_sha256,bytes:$buzz_bytes},"git-credential-nostr":{sha256:$helper_sha256,bytes:$helper_bytes}}}' \
+            | jq -cS . >"${output}/binary-manifest.json"
+
       - name: Attest tools image provenance
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-name: ${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+
+      - name: Upload exact tools artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: buzz-tools-linux-amd64
+          path: ${{ runner.temp }}/buzz-tools-linux-amd64
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Publish summary
         env:
