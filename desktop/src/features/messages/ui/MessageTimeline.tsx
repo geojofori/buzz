@@ -123,6 +123,8 @@ type MessageTimelineProps = {
   unreadCount?: number;
   /** Per-thread unread counts keyed by thread root id. */
   threadUnreadCounts?: ReadonlyMap<string, number>;
+  /** Root id of the thread the panel currently has open, or null. */
+  openThreadHeadId?: string | null;
 };
 
 /** Stable empty reference used as the `useDeferredValue` initial value so the
@@ -209,6 +211,7 @@ const MessageTimelineBase = React.forwardRef<
     firstUnreadMessageId = null,
     unreadCount = 0,
     threadUnreadCounts,
+    openThreadHeadId = null,
   }: MessageTimelineProps,
   ref,
 ) {
@@ -686,6 +689,7 @@ const MessageTimelineBase = React.forwardRef<
       searchMatchingMessageIds={searchMatchingMessageIds}
       searchQuery={searchQuery}
       useVirtualizer={useTimelineVirtualizer}
+      openThreadHeadId={openThreadHeadId}
       threadUnreadCounts={threadUnreadCounts}
       unfollowThreadById={unfollowThreadById}
     />

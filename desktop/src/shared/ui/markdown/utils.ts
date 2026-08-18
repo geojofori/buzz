@@ -1,6 +1,7 @@
 import * as React from "react";
 import { defaultUrlTransform } from "react-markdown";
 
+import { isLocalFileHref } from "@/features/file-viewer/lib/localFilePath";
 import { isChannelLink } from "@/features/messages/lib/channelLink";
 import { isMessageLink } from "@/features/messages/lib/messageLink";
 import { parseEntityLink } from "@/shared/lib/entityLink";
@@ -179,12 +180,19 @@ export function isInsideHiddenSpoiler(element: Element): boolean {
  *   message-link pill renderer).
  * - `buzz://pr|issue|repo` hrefs — preserved only when `parseEntityLink`
  *   succeeds, keeping the sanitizer active against arbitrary `buzz://` URIs.
+ * - `file:` hrefs naming a local file: preserved so the anchor can hand them
+ *   to the in-app file viewer. `defaultUrlTransform` would blank them, since
+ *   `file:` is not one of its safe protocols. The anchor never puts the value
+ *   back on an `href` attribute, so nothing can navigate to it; it is read,
+ *   re-parsed, and turned into a viewer tab. Bare absolute paths (`/Users/…`)
+ *   need no exemption: they carry no protocol and already pass through.
  * - Everything else delegates to `defaultUrlTransform`.
  */
 export function buzzDeepLinkUrlTransform(value: string, key: string): string {
   if (key !== "href") return defaultUrlTransform(value);
   if (isMessageLink(value) || isChannelLink(value)) return value;
   if (parseEntityLink(value).ok) return value;
+  if (isLocalFileHref(value)) return value;
   return defaultUrlTransform(value);
 }
 

@@ -100,6 +100,8 @@ type TimelineMessageListProps = {
   searchQuery?: string;
   /** Per-thread unread counts keyed by thread root id. */
   threadUnreadCounts?: ReadonlyMap<string, number>;
+  /** Root id of the thread the panel currently has open, or null. */
+  openThreadHeadId?: string | null;
   /** Content rendered as the first virtual row before channel history. */
   leadingContent?: React.ReactNode;
   /** Hide date boundaries for a huddle's live transcript. */
@@ -155,6 +157,7 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
   searchMatchingMessageIds,
   searchQuery,
   threadUnreadCounts,
+  openThreadHeadId = null,
   unfollowThreadById,
   leadingContent,
   historyExhausted = false,
@@ -276,6 +279,7 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
               searchMatchingMessageIds={searchMatchingMessageIds}
               searchQuery={searchQuery}
               threadUnreadCounts={threadUnreadCounts}
+              isOpenThreadHead={item.entry.message.id === openThreadHeadId}
               unfollowThreadById={unfollowThreadById}
               videoReviewContext={videoReviewContextById.get(
                 item.entry.message.id,
@@ -311,6 +315,7 @@ export const TimelineMessageList = React.memo(function TimelineMessageList({
       searchMatchingMessageIds,
       searchQuery,
       threadUnreadCounts,
+      openThreadHeadId,
       unfollowThreadById,
       videoReviewContextById,
     ],

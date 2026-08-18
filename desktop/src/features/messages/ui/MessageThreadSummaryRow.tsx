@@ -59,6 +59,7 @@ export function MessageThreadSummaryRow({
   depth = 0,
   depthGuideDepths,
   highlightThreadLineDepths,
+  isOpen = false,
   message,
   onCollapseDepthGuide,
   onCollapseDepthGuideHoverChange,
@@ -72,6 +73,8 @@ export function MessageThreadSummaryRow({
   depth?: number;
   depthGuideDepths?: ReadonlyArray<number>;
   highlightThreadLineDepths?: ReadonlyArray<number>;
+  /** This thread is the one the thread panel currently has open. */
+  isOpen?: boolean;
   message: TimelineMessage;
   onCollapseDepthGuide?: (message: TimelineMessage) => void;
   onCollapseDepthGuideHoverChange?: (
@@ -95,9 +98,11 @@ export function MessageThreadSummaryRow({
     THREAD_SUMMARY_SURFACE_AVATAR_INSET_REM,
   )})`;
   const replyLabel = summary.replyCount === 1 ? "reply" : "replies";
-  const summaryAriaLabel = summary.lastReplyAt
-    ? `View thread with ${summary.replyCount} ${replyLabel}, last reply ${formatThreadSummaryLastReplyTime(summary.lastReplyAt)}`
-    : `View thread with ${summary.replyCount} ${replyLabel}`;
+  const summaryAriaLabel = isOpen
+    ? `Thread with ${summary.replyCount} ${replyLabel} is open`
+    : summary.lastReplyAt
+      ? `View thread with ${summary.replyCount} ${replyLabel}, last reply ${formatThreadSummaryLastReplyTime(summary.lastReplyAt)}`
+      : `View thread with ${summary.replyCount} ${replyLabel}`;
   const guideDepths = depthGuideDepths
     ? [...depthGuideDepths]
     : Array.from({ length: Math.max(0, depth - 1) }, (_, index) => index + 1);
@@ -211,6 +216,7 @@ export function MessageThreadSummaryRow({
       <button
         aria-label={summaryAriaLabel}
         className="group relative isolate inline-flex h-[1.875rem] w-fit max-w-full cursor-pointer items-center gap-1.5 rounded-full py-0 pr-3 text-left text-xs font-medium text-muted-foreground transition-[color,opacity] hover:text-foreground hover:opacity-90 focus-visible:outline-hidden"
+        data-open={isOpen || undefined}
         data-thread-head-id={message.id}
         data-testid="message-thread-summary"
         onClick={() => onOpenThread(message)}
@@ -245,6 +251,14 @@ export function MessageThreadSummaryRow({
             <span className="font-medium transition-colors group-hover:text-foreground">
               {summary.replyCount} {replyLabel}
             </span>
+            {isOpen ? (
+              <span
+                className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 align-middle text-2xs font-medium uppercase tracking-wide text-primary"
+                data-testid="message-thread-summary-open-pill"
+              >
+                Open
+              </span>
+            ) : null}
             {unreadCount != null && unreadCount > 0 ? (
               <span className="ml-1" data-testid="thread-unread-badge">
                 ({unreadCount} new)
