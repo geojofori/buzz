@@ -309,6 +309,15 @@ export function SettingsView({
               v{appVersion}
             </p>
           ) : null}
+          {/* Upstream attribution. Whisper Work is a fork of block/buzz; this
+              is the one place the upstream name stays user-visible. */}
+          <p
+            className="px-2 pb-1 text-xs text-sidebar-foreground/45"
+            data-buzz-sidebar-secondary
+            data-testid="settings-upstream-credit"
+          >
+            Built on Buzz by Block (Apache-2.0)
+          </p>
         </SidebarFooter>
       </Sidebar>
 

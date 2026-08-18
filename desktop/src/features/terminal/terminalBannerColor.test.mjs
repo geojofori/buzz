@@ -65,7 +65,8 @@ const THEMES = await palettes();
 
 test("every shipped theme is censused", () => {
   assert.equal(THEMES.length, SYNTAX_THEMES.length);
-  assert.equal(THEMES.length, 62);
+  // 62 upstream themes + the Whisper Work light/dark pair.
+  assert.equal(THEMES.length, 64);
 });
 
 test("wordmark holds contrast and chroma across the whole sweep, not just at the stops", () => {

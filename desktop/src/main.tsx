@@ -85,7 +85,7 @@ function renderApp() {
           <CommunityOnboardingProvider
             enabled={huddleWindowChannelId() === null}
           >
-            <ThemeProvider defaultTheme="buzz">
+            <ThemeProvider defaultTheme="whisper-work-dark">
               <TooltipProvider delayDuration={300}>
                 <EmojiBurstProvider>
                   <PoofBurstProvider>

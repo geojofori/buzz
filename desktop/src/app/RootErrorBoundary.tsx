@@ -38,10 +38,12 @@ export class RootErrorBoundary extends Component<
     if (error) {
       return (
         <div className="flex h-screen w-screen flex-col items-center justify-center gap-3 bg-background px-6 text-foreground">
-          <p className="text-base font-semibold">Buzz failed to start</p>
+          <p className="text-base font-semibold">
+            Whisper Work failed to start
+          </p>
           <p className="max-w-md text-center text-sm text-muted-foreground">
-            Reload Buzz to try again. If this keeps happening, check that Buzz
-            can access website data, then contact support.
+            Reload Whisper Work to try again. If this keeps happening, check
+            that Whisper Work can access website data, then contact support.
           </p>
           <button
             type="button"

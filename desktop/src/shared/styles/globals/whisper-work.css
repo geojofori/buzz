@@ -1,0 +1,57 @@
+/*
+ * Whisper Work theme — sidebar gradient and chrome tokens.
+ *
+ * The Whisper Work pair reuses the whole branded-sidebar machinery that Buzz
+ * established: ThemeProvider sets `data-buzz-sidebar` (the generic marker) and
+ * `data-buzz-theme` (the concrete variant) on <html>, and every rule in
+ * `theme.css` reads the shared `--buzz-*` tokens. This file only re-points
+ * those tokens, so the fork gets its own quiet gradient without forking any of
+ * the layout, hover, or selection rules.
+ *
+ * Intentionally unlayered, matching `theme.css`: unlayered declarations beat
+ * Tailwind's layered utilities without needing `!important`.
+ *
+ * Attribute-prefix selectors carry higher specificity than the bare `:root`
+ * block that defines the Buzz gradient primitives, so these win regardless of
+ * import order; the doubled-attribute selectors below also outrank
+ * `:root[data-buzz-sidebar].dark`.
+ *
+ * Colour source: `sources/designs/Whisper-Create-Design.md` sections 4.1/4.2.
+ * Inferred values are listed in `WHISPER-WORK.md`.
+ */
+
+:root[data-buzz-theme^="whisper-work"] {
+  /* Light: plinth settling into bone. No branded hue, just a quiet ramp. */
+  --buzz-gradient-light-top: #f7f5ef;
+  --buzz-gradient-light-bottom: #e9e5dc;
+  /* Dark: raised panel settling into the footer-ink ground. */
+  --buzz-gradient-dark-top: #1a1a1a;
+  --buzz-gradient-dark-bottom: #0f0f0f;
+  /* Inset content canvas in dark: the brand's panel value, not Buzz's. */
+  --buzz-content-dark: 0 0% 7.8%;
+}
+
+/*
+ * Selected navigation fill. Buzz pins this to black in light and white in
+ * dark; Whisper Work uses cobalt, the brand's focus and cool accent, so the
+ * active row agrees with the pinned accent everywhere else in the app.
+ */
+:root[data-buzz-sidebar][data-buzz-theme^="whisper-work"]:not(.dark),
+:root[data-buzz-sidebar][data-buzz-theme^="whisper-work"].dark {
+  --buzz-active-fill: 231.2 100% 58.6%;
+  --buzz-active-foreground: 0 0% 100%;
+}
+
+/*
+ * Muted sidebar text. The Buzz defaults are flat black/white alpha; these keep
+ * the brand's warm neutral cast on both grounds.
+ */
+:root[data-buzz-sidebar][data-buzz-theme^="whisper-work"]:not(.dark) {
+  --buzz-muted-foreground: rgb(107 102 96 / 100%);
+  --buzz-chrome-foreground: rgb(107 102 96 / 82%);
+}
+
+:root[data-buzz-sidebar][data-buzz-theme^="whisper-work"].dark {
+  --buzz-muted-foreground: rgb(154 148 140 / 100%);
+  --buzz-chrome-foreground: rgb(154 148 140 / 82%);
+}

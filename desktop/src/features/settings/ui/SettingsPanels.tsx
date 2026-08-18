@@ -34,7 +34,7 @@ import { LocalArchiveSettingsCard } from "@/features/local-archive/ui/LocalArchi
 import { cn } from "@/shared/lib/cn";
 import { useCommunities } from "@/features/communities/useCommunities";
 import { Badge } from "@/shared/ui/badge";
-import { isBuzzTheme, useTheme } from "@/shared/theme/ThemeProvider";
+import { isBrandedTheme, useTheme } from "@/shared/theme/ThemeProvider";
 import {
   LIGHT_THEMES,
   SYNTAX_THEMES,
@@ -435,10 +435,11 @@ function ThemeSettingsCard() {
   const showCommunityScope = communities.length > 1;
   const communityLabel = appearanceCommunityLabel(activeCommunity?.name);
 
-  // Buzz themes pin a neutral accent (GitHub black in light, white in dark),
-  // so the accent picker is hidden while a Buzz theme is active. `themeName` is
-  // the effective theme, so this also covers System mode resolving to Buzz.
-  const buzzThemeSelected = isBuzzTheme(themeName);
+  // The branded pairs pin their own accent (neutral for Buzz, cobalt for
+  // Whisper Work), so the accent picker is hidden while one is active.
+  // `themeName` is the effective theme, so this also covers System mode
+  // resolving to a branded theme.
+  const buzzThemeSelected = isBrandedTheme(themeName);
   const accentPickerHidden = buzzThemeSelected;
   const shouldReduceMotion = useReducedMotion();
 
@@ -636,7 +637,7 @@ function ThemeSettingsCard() {
     >
       <SettingsSectionHeader
         title="Appearance"
-        description="Choose how Buzz looks and feels."
+        description="Choose how Whisper Work looks and feels."
       />
 
       <SettingsOptionGroupList>
@@ -716,7 +717,7 @@ function ThemeSettingsCard() {
                 className="text-sm font-normal text-muted-foreground/70"
                 data-settings-subcopy
               >
-                Choose the colors used throughout Buzz.
+                Choose the colors used throughout Whisper Work.
               </p>
             </div>
             <button

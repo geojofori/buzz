@@ -10,6 +10,12 @@ import {
   type TerminalPalette,
   extractTerminalPalette,
 } from "./terminal-palette";
+import {
+  WHISPER_WORK_DARK_THEME,
+  WHISPER_WORK_DARK_THEME_NAME,
+  WHISPER_WORK_LIGHT_THEME,
+  WHISPER_WORK_THEME_NAME,
+} from "./whisper-work-theme";
 
 /**
  * Buzz theme name. Buzz is a first-party light theme that reuses GitHub
@@ -42,6 +48,16 @@ export const BUZZ_BASE_THEME: SyntaxThemeName = "github-light";
 export const BUZZ_DARK_BASE_THEME: SyntaxThemeName = "github-dark";
 
 /**
+ * The Shiki bundle Whisper Work borrows its *code highlighting* from. The
+ * theme's own UI palette lives in `whisper-work-theme.ts`; only fenced code
+ * blocks fall back to a bundled Shiki grammar theme, exactly as Buzz does.
+ */
+export const WHISPER_WORK_BASE_THEME: SyntaxThemeName = "github-light";
+
+/** The Shiki bundle Whisper Work Dark borrows its code highlighting from. */
+export const WHISPER_WORK_DARK_BASE_THEME: SyntaxThemeName = "github-dark";
+
+/**
  * Resolve a theme name to the real Shiki bundled theme it maps to.
  *
  * Most themes map to themselves, but the Buzz aliases (`buzz` / `buzz-dark`)
@@ -55,6 +71,10 @@ export const BUZZ_DARK_BASE_THEME: SyntaxThemeName = "github-dark";
 export function resolveShikiThemeName(name: string): SyntaxThemeName {
   if (name === BUZZ_THEME_NAME) return BUZZ_BASE_THEME;
   if (name === BUZZ_DARK_THEME_NAME) return BUZZ_DARK_BASE_THEME;
+  if (name === WHISPER_WORK_THEME_NAME) return WHISPER_WORK_BASE_THEME;
+  if (name === WHISPER_WORK_DARK_THEME_NAME) {
+    return WHISPER_WORK_DARK_BASE_THEME;
+  }
   return name as SyntaxThemeName;
 }
 
@@ -62,6 +82,8 @@ export function resolveShikiThemeName(name: string): SyntaxThemeName {
 // github-light palette plus a sidebar gradient; the rest are the Shiki
 // bundled syntax themes, alphabetically sorted.
 export const SYNTAX_THEMES = [
+  "whisper-work",
+  "whisper-work-dark",
   "buzz",
   "buzz-dark",
   "andromeeda",
@@ -131,6 +153,7 @@ export type SyntaxThemeName = (typeof SYNTAX_THEMES)[number];
 // Known light themes — used by the theme picker to show sun/moon icons
 // for themes that haven't been loaded yet.
 export const LIGHT_THEMES: ReadonlySet<SyntaxThemeName> = new Set([
+  "whisper-work",
   "buzz",
   "catppuccin-latte",
   "everforest-light",
@@ -157,6 +180,10 @@ const themeImports: Record<
   SyntaxThemeName,
   () => Promise<{ default: ThemeRegistrationRaw }>
 > = {
+  // Whisper Work carries its own palette; the gradient is applied separately.
+  "whisper-work": () => Promise.resolve({ default: WHISPER_WORK_LIGHT_THEME }),
+  "whisper-work-dark": () =>
+    Promise.resolve({ default: WHISPER_WORK_DARK_THEME }),
   // Buzz reuses the github-light palette; its gradient is applied separately.
   buzz: () => import("shiki/themes/github-light.mjs"),
   // Buzz Dark reuses the github-dark palette; dark gradient applied separately.
@@ -239,7 +266,9 @@ export function isLightTheme(name: string): boolean {
 export const THEME_PAIRS: ReadonlyMap<SyntaxThemeName, SyntaxThemeName> =
   new Map([
     // Light → Dark
-    // Buzz is the first-party pair; keep it first so it leads every category.
+    // Whisper Work is the fork's first-party pair; keep it first so it leads
+    // every category. Buzz follows as the upstream pair.
+    ["whisper-work", "whisper-work-dark"],
     ["buzz", "buzz-dark"],
     ["catppuccin-latte", "catppuccin-mocha"],
     ["everforest-light", "everforest-dark"],
@@ -259,6 +288,7 @@ export const THEME_PAIRS: ReadonlyMap<SyntaxThemeName, SyntaxThemeName> =
     ["solarized-light", "solarized-dark"],
     ["vitesse-light", "vitesse-dark"],
     // Dark → Light (reverse mappings)
+    ["whisper-work-dark", "whisper-work"],
     ["buzz-dark", "buzz"],
     ["catppuccin-mocha", "catppuccin-latte"],
     ["everforest-dark", "everforest-light"],

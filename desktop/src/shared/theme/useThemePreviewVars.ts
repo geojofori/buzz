@@ -14,6 +14,7 @@ import {
 } from "./ThemePreviewFrame";
 import { NEUTRAL_ACCENT } from "./ThemeProvider";
 import { hexToHsl } from "./adaptive-theme";
+import { getWhisperWorkVarOverrides } from "./whisper-work-theme";
 
 export type ThemePreviewVarsByTheme = Partial<
   Record<SyntaxThemeName, ThemePreviewVars>
@@ -30,7 +31,9 @@ async function loadThemePreviewVars(name: SyntaxThemeName) {
     deleted: info.deleted,
     modified: info.modified,
   });
-  return [name, vars] as const;
+  // Match applyTheme: Whisper Work's preview tile shows its pinned surfaces.
+  const previewVars = { ...vars, ...(getWhisperWorkVarOverrides(name) ?? {}) };
+  return [name, previewVars] as const;
 }
 
 export function preloadThemePreviewVars() {

@@ -1,3 +1,16 @@
+# Whisper Work
+
+Whisper Work is WhisperCreate's downstream fork of [block/buzz](https://github.com/block/buzz):
+the same relay, desktop, mobile and CLI, rebranded and themed for a private,
+self-hosted deployment. Upstream changes are adopted as reviewed, pinned
+commits rather than tracked automatically, so internal identifiers stay on
+upstream's names and only the user-visible identity differs.
+
+Built on Buzz by Block (Apache-2.0). See [WHISPER-WORK.md](WHISPER-WORK.md) for
+what was renamed, what deliberately was not, and the theme token table.
+
+---
+
 <h1 align="center">Buzz 🐝</h1>
 
 <p align="center">

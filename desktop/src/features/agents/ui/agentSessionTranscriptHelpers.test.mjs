@@ -35,7 +35,7 @@ test("parsePromptText wraps header-less free text in a single Prompt section", (
   );
   assert.equal(result.sections[0].body, "just some free text");
   assert.equal(result.userText, "");
-  assert.equal(result.userTitle, "Buzz event");
+  assert.equal(result.userTitle, "Whisper Work event");
   assert.equal(result.userPubkey, null);
   assert.equal(result.userEventId, null);
 });
@@ -121,10 +121,10 @@ test("parsePromptText yields a null pubkey when From has no hex", () => {
   assert.equal(result.userTitle, "Note");
 });
 
-test("parsePromptText defaults the title to 'Buzz event' when no kind is present", () => {
+test("parsePromptText defaults the title to 'Whisper Work event' when no kind is present", () => {
   const text = ["[Buzz event]", "Content: x"].join("\n");
   const result = parsePromptText(text);
-  assert.equal(result.userTitle, "Buzz event");
+  assert.equal(result.userTitle, "Whisper Work event");
 });
 
 test("parsePromptText leading text before a header becomes a Prompt section", () => {
@@ -155,7 +155,7 @@ test("extractPromptText returns empty string when prompt is missing or not an ar
   assert.equal(extractPromptText({ params: { prompt: "nope" } }), "");
 });
 
-test("extractToolIdentity ignores Buzz tool names that only appear in file contents", () => {
+test("extractToolIdentity ignores Whisper Work tool names that only appear in file contents", () => {
   const identity = extractToolIdentity({
     sessionUpdate: "tool_call_update",
     toolCallId: "read-file-1",
@@ -177,7 +177,7 @@ test("extractToolIdentity ignores Buzz tool names that only appear in file conte
   });
 });
 
-test("extractToolIdentity still recognizes explicit Buzz tool fields", () => {
+test("extractToolIdentity still recognizes explicit Whisper Work tool fields", () => {
   const identity = extractToolIdentity({
     sessionUpdate: "tool_call",
     title: "Tool call",
@@ -329,7 +329,7 @@ test("parseSystemPromptSections pins the realistic Workspace+Base+System+Core ha
   // core is extracted as a distinct "Core Memory" section last.
   const framed = [
     "[Workspace]",
-    "You are operating inside the Buzz platform.",
+    "You are operating inside the Whisper Work platform.",
     "",
     "[Base]",
     "You are an assistant.",
@@ -346,7 +346,7 @@ test("parseSystemPromptSections pins the realistic Workspace+Base+System+Core ha
   assert.deepEqual(sections, [
     {
       title: "Base",
-      body: "[Workspace]\nYou are operating inside the Buzz platform.\n\n[Base]\nYou are an assistant.",
+      body: "[Workspace]\nYou are operating inside the Whisper Work platform.\n\n[Base]\nYou are an assistant.",
     },
     { title: "System", body: "Custom persona instructions." },
     {
@@ -536,7 +536,7 @@ test("parseSystemPromptSections extracts Team Instructions with Core Memory and 
   // compose_prompt() produces the canonical delimiter; with_core() and with_canvas() append their frames.
   const framed = [
     "[Base]",
-    "You are a helpful AI assistant running in Buzz.",
+    "You are a helpful AI assistant running in Whisper Work.",
     "",
     "[System]",
     "You are Observer Agent. You coordinate multi-agent workflows.",
@@ -558,7 +558,10 @@ test("parseSystemPromptSections extracts Team Instructions with Core Memory and 
   ].join("\n");
   const sections = parseSystemPromptSections(framed);
   assert.deepEqual(sections, [
-    { title: "Base", body: "You are a helpful AI assistant running in Buzz." },
+    {
+      title: "Base",
+      body: "You are a helpful AI assistant running in Whisper Work.",
+    },
     {
       title: "System",
       body: "You are Observer Agent. You coordinate multi-agent workflows.",
@@ -734,7 +737,7 @@ test("parseSystemPromptSections (modern) pins full 5-section shape: Base+System+
   // Production shape from with_team() + with_core() + with_canvas(): all five sections present.
   const framed = [
     "[Base]",
-    "You are a helpful AI assistant running in Buzz.",
+    "You are a helpful AI assistant running in Whisper Work.",
     "",
     "[System]",
     "You are Observer Agent. You coordinate multi-agent workflows.",
@@ -755,7 +758,10 @@ test("parseSystemPromptSections (modern) pins full 5-section shape: Base+System+
   ].join("\n");
   const sections = parseSystemPromptSections(framed);
   assert.deepEqual(sections, [
-    { title: "Base", body: "You are a helpful AI assistant running in Buzz." },
+    {
+      title: "Base",
+      body: "You are a helpful AI assistant running in Whisper Work.",
+    },
     {
       title: "System",
       body: "You are Observer Agent. You coordinate multi-agent workflows.",

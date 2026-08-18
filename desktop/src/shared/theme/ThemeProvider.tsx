@@ -22,6 +22,12 @@ import {
   loadThemeData,
   resolveSystemTheme,
 } from "./theme-loader";
+import {
+  WHISPER_WORK_ACCENT,
+  WHISPER_WORK_DARK_THEME_NAME,
+  getWhisperWorkVarOverrides,
+  isWhisperWorkTheme,
+} from "./whisper-work-theme";
 
 export const THEME_STORAGE_KEY = "buzz-theme";
 const CACHE_KEY = "buzz-theme-cache";
@@ -248,20 +254,31 @@ export function isBuzzTheme(themeName: string): boolean {
 }
 
 /**
+ * Whether a theme is one of the first-party branded pairs (Whisper Work or the
+ * upstream Buzz pair). Branded themes pin their own accent, paint the sidebar
+ * gradient, and expose the prominent-active-tab setting.
+ */
+export function isBrandedTheme(themeName: string): boolean {
+  return isBuzzTheme(themeName) || isWhisperWorkTheme(themeName);
+}
+
+/**
  * Resolve the accent to actually apply for a theme: Buzz themes are pinned to
- * the neutral accent; every other theme uses the stored/selected accent.
+ * the neutral accent, Whisper Work themes to brand cobalt; every other theme
+ * uses the stored/selected accent.
  */
 function resolveEffectiveAccent(
   themeName: string,
   accentColor: string,
 ): string {
+  if (isWhisperWorkTheme(themeName)) return WHISPER_WORK_ACCENT;
   return isBuzzTheme(themeName) ? NEUTRAL_ACCENT : accentColor;
 }
 
-/** Toggle the Buzz-specific gradient marker independently from glass. */
+/** Toggle the branded gradient marker independently from glass. */
 function applyBuzzSidebar(themeName: string) {
   const root = document.documentElement;
-  if (isBuzzTheme(themeName)) {
+  if (isBrandedTheme(themeName)) {
     root.setAttribute("data-buzz-sidebar", "");
     // Keep the concrete Buzz variant on the root as well as the generic
     // marker. The gradient stylesheet matches this attribute directly, which
@@ -435,11 +452,20 @@ async function applyTheme(name: SyntaxThemeName): Promise<{
   if (requestToken !== themeApplyRequest) return null;
 
   const info = extractThemeInfo(name, themeData);
-  const { isDark, vars } = createThemeVars(info.bg, info.fg, info.comment, {
-    added: info.added,
-    deleted: info.deleted,
-    modified: info.modified,
-  });
+  const { isDark, vars: derivedVars } = createThemeVars(
+    info.bg,
+    info.fg,
+    info.comment,
+    {
+      added: info.added,
+      deleted: info.deleted,
+      modified: info.modified,
+    },
+  );
+  // Whisper Work pins its surfaces to the brand's fixed grounds rather than
+  // taking the luminance-derived approximations. Every other token stays
+  // derived, and every other theme is untouched.
+  const vars = { ...derivedVars, ...(getWhisperWorkVarOverrides(name) ?? {}) };
 
   const root = document.documentElement;
   for (const [key, value] of Object.entries(vars)) {
@@ -479,7 +505,7 @@ async function applyTheme(name: SyntaxThemeName): Promise<{
 
 export function ThemeProvider({
   children,
-  defaultTheme = "buzz",
+  defaultTheme = WHISPER_WORK_DARK_THEME_NAME,
 }: ThemeProviderProps) {
   const glassBackgroundSupported = isTauri() && isMacPlatform();
 
@@ -523,11 +549,7 @@ export function ThemeProvider({
   );
   const [followSystem, setFollowSystemState] = useState<boolean>(() => {
     const stored = getStorageItem(FOLLOW_SYSTEM_KEY);
-    if (stored !== null) return stored === "true";
-    // Fresh profiles (no saved theme) default to System mode so the Buzz
-    // default tracks the OS light/dark scheme. Profiles that picked a theme
-    // before this toggle existed keep their fixed theme until they opt in.
-    return getStorageItem(THEME_STORAGE_KEY) === null;
+    return stored === "true";
   });
   const [systemIsDark, setSystemIsDark] = useState<boolean>(() => {
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
