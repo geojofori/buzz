@@ -43,7 +43,7 @@ export function OnboardingFooterProvider({
       {children}
       {/* Scrim: on pages taller than the viewport, content scrolls under the
           docked CTA. This bottom-anchored fade to the shell's bottom color
-          (invisible on short pages and on the flat chartreuse landing) gives
+          (invisible on short pages and on the flat landing field) gives
           the CTA a floor to sit on instead of colliding with form fields. */}
       <div
         aria-hidden

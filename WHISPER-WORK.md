@@ -353,11 +353,109 @@ and the pulse being on by default and off under `pulse={false}`.
 
 ---
 
+## 6b. Onboarding
+
+The first-launch flow was upstream's loudest surface: a chartreuse (`#d7d72e`)
+field under a dot grid, with a blurred `Buzz` wordmark bitmap on the landing.
+It is now the brand's dark ground, and the landing leads with the logomark.
+
+### The landing
+
+`desktop/src/features/onboarding/ui/MachineOnboardingFlow.tsx`
+
+| Was | Now |
+|---|---|
+| `<img src="/landing/buzz-wordmark.png">`, up to 600px wide | The logomark at `w-60` (240px), then the product name as UI text |
+| Name baked into a bitmap | `<h1 class="text-title font-normal">Whisper Work</h1>`, Space Grotesk at 2.5rem / -0.02em, the display size every onboarding heading already uses |
+| "Your people, your agents, your projects [em dash]<br>all in one place." | "Your people, your agents and your projects, in one place." on `text-muted-foreground`, one line of copy, no em dash |
+
+This follows the logo law: the artwork is the logomark, and the name beside it
+is UI text, never a typeset "logo". `desktop/public/landing/buzz-wordmark.png`
+was deleted (nothing else referenced it) and the directory with it.
+
+`OnboardingMark` (exported from `OnboardingChrome.tsx`) is new and small:
+`BuzzMark` chooses artwork off `html.dark`, which is right wherever the page
+ground follows the theme. The onboarding shell paints the dark ground on every
+theme, so its mark is always the light-on-dark bitmap; the variant pair would
+hide the mark completely under a light theme. The landing hero, the landing
+corner mark and the step chrome all render `OnboardingMark`.
+
+`LandingBees` keeps its corner mark for positional continuity with the step
+chrome, which pins the same mark in the same place, but drops from `w-11` to
+`w-8` at 50% opacity so it does not compete with the landing's own mark.
+
+### The ground and the tokens
+
+`desktop/src/shared/styles/globals/components.css`, `.buzz-onboarding-*` rules
+only. Class names are unchanged; only values moved.
+
+| Token / rule | Was | Now |
+|---|---|---|
+| `.buzz-onboarding-welcome` field | `#d7d72e` flat | `#0F0F0F` flat (page ground) |
+| Dot grid | `rgb(0 0 0 / 0.08)` | `rgb(255 255 255 / 0.06)` |
+| Step ramp | `#d7d72e` → `#d7e7f6` | `--buzz-onboarding-shell-top` `#141414` → `--buzz-onboarding-shell-bottom` `#0F0F0F` |
+| `--buzz-welcome-chartreuse` | `#d7d72e` | `#2C4BFF` (cobalt) |
+| `--buzz-onboarding-cta-label` (shell) | `#d7e6f0` | `#141414` (ink on the bone pill) |
+| `--buzz-onboarding-backup-ink` (shell) | `#717106` olive | `rgb(233 229 220 / 0.9)` (bone at 90%) |
+
+`--buzz-welcome-chartreuse` kept its name deliberately: `agentConfigControls.tsx`
+and two `.buzz-onboarding-runtime-setup` rules read it from outside this
+change's fence, so renaming it would have widened the diff into the agents
+feature. It is now an accent (the setup chips and the runtime-setup flash
+ring), never a page ground.
+
+The startup shell's semantic tokens are the Whisper Work dark palette,
+unconditionally:
+
+```
+.buzz-onboarding-neutral-theme.buzz-startup-shell:not(.buzz-onboarding-security-theme)
+```
+
+`--background` `0 0% 5.9%`, `--foreground` bone `41 23% 89%`, `--card`
+`0 0% 7.8%`, `--popover`/`--secondary`/`--muted`/`--accent` `0 0% 10.2%`,
+`--muted-foreground` `34 7% 57.6%`, `--border`/`--input` `0 0% 14.9%`,
+`--primary` bone with `--primary-foreground` ink, `--destructive` coral,
+`--ring` cobalt, plus `color-scheme: dark`.
+
+Two things decide that selector. It sits *after* the
+`[data-system-color-scheme]` blocks and carries a third class so it beats
+them: several shells (recovery, keyring-locked, community) stamp the system
+scheme on the same element, and a light token set on this ground would be
+black text on near-black. And it excludes the backup-security subview, which
+already owns a dark treatment of its own. Portaled onboarding dialogs are
+separate surfaces: they keep the existing light and `.dark` blocks, and the
+two that opt into light explicitly (`IdentityKeyHelpDialog`, the recovery
+dialogs) still get olive key ink and the light-blue CTA label.
+
+### Contrast repairs on the steps
+
+Moving the ground from near-white to near-black turned several light chips
+into bone-on-white. Fixed in the same pass:
+
+| File | Change |
+|---|---|
+| `BackupStep.tsx` | The key card takes `textureTone="dark"`, so the bone key ink sits on the dark bake of the powder texture rather than the white one |
+| `SetupStep.tsx` | Installing pill `bg-white/60` → `bg-foreground/10`; READY pill `bg-[#EBEFEF]` → `bg-foreground/10`; the empty-harness note `bg-white/70` → `bg-foreground/5` |
+| `DefaultConfigStep.tsx` | Both harness selects `bg-white` → `bg-foreground/5` (they inherited bone label text) |
+| `IdentityRecoveryPairing.tsx` | Copy-code button `bg-white` → `bg-foreground/5`. The QR frame stays white: a QR code needs it |
+| `NostrKeyImportForm.tsx` | The backup-password field is on the neutral shell, not the security ground, so it follows the dark tokens instead of staying a white pill |
+| `OnboardingChrome.tsx` | Secondary pill `bg-foreground/10` → `bg-secondary` (`#1A1A1A` with a bone label) |
+
+Coverage: `desktop/src/features/onboarding/ui/machineOnboardingLanding.test.mjs`
+(3 tests) pins the landing copy (named "Whisper Work", no em dash, the retired
+wordmark path gone) and the shell's ground values.
+`whisperMark.test.mjs`'s LandingBees test now pins one corner mark rather than
+the theme-swap pair.
+
+---
+
 ## 7. Still to do
 
 | Item | Why it is not done |
 |---|---|
 | `desktop/tests/e2e/boot-splash.spec.ts` | **Will fail.** It asserts `.bee-wing-left` inside the boot-splash overlay has `animation-name: bee-wing-left-flap` in the `running` state. There are no wings any more. The spec needs rewriting against the new mark; e2e is outside this change's fence and was not run |
+| `desktop/tests/e2e/identity-lost.spec.ts` | **Will fail.** It pins the old landing: gate `background-color: rgb(215, 215, 46)`, gate `color: rgb(23, 23, 23)`, the primary CTA's `background-color: rgb(23, 23, 23)`, and a ramp regex naming `rgb(215, 215, 46)` → `rgb(215, 231, 246)`. On the brand ground those become `rgb(15, 15, 15)`, `rgb(233, 229, 220)`, `rgb(233, 229, 220)` and a ramp of `rgb(20, 20, 20)` → `rgb(15, 15, 15)`. e2e is outside this card's fence and was not run |
+| `desktop/tests/e2e/key-import-reveal.spec.ts:11` | **Will fail.** `BACKUP_INK = "rgb(113, 113, 6)"` is the olive key ink; on the startup shell the key ink is now `rgba(233, 229, 220, 0.9)`. Same fence, same reason |
 | `desktop/tests/e2e/huddle-transcription.spec.ts:962` | **Will fail.** It waits for `.bee-sprite` inside `huddle-starting-view`; `FlappingBee` no longer emits that class. Same fence, same reason |
 | `App.tsx`'s `BeeLoader` layers a pulsing `FuzzyLogo` over a static `BuzzMark` | Upstream did that so the animated bee could take over from the static one. Both are now the same artwork, so the pulse composites away and the loader reads as still. Fixing it means editing a call site, which this card deliberately did not touch |
 | `desktop/src-tauri/src/builderlab.rs` OAuth page styling | The page is still bee-yellow (`#d7d72e`) with a bee SVG behind the renamed strings. Restyling it to the brand ground is a design change, not a rename |

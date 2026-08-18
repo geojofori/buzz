@@ -36,6 +36,7 @@ import {
   ONBOARDING_LANDING_CTA_CLASS,
   ONBOARDING_SECONDARY_CTA_CLASS,
   OnboardingChrome,
+  OnboardingMark,
 } from "./OnboardingChrome";
 import { OnboardingFooterProvider } from "./OnboardingFooter";
 import {
@@ -117,7 +118,7 @@ export function MachineOnboardingFlow({
   >("forward");
   const [returningFromSecurity, setReturningFromSecurity] =
     React.useState(false);
-  // Owned here so switching between the yellow onboarding view and the dark
+  // Owned here so switching between the onboarding shell and the dark
   // security subview keeps the created backup, password, and test progress.
   const backupSession = useEncryptedBackupSession();
   const reduceMotion = useReducedMotion() ?? false;
@@ -311,14 +312,15 @@ export function MachineOnboardingFlow({
               direction={transitionDirection}
               transitionKey={`machine-identity-${transitionDirection}`}
             >
-              <img
+              <OnboardingMark
                 alt="Whisper Work"
-                className="w-full max-w-[600px]"
-                src="/landing/buzz-wordmark.png"
+                className="h-auto w-60 max-w-full"
               />
-              <p className="mt-2 max-w-[560px] text-center text-2xl font-normal leading-none text-foreground">
-                Your people, your agents, your projects —<br />
-                all in one place.
+              <h1 className="mt-8 text-title font-normal text-foreground">
+                Whisper Work
+              </h1>
+              <p className="mt-3 max-w-[560px] text-center text-2xl font-normal leading-snug text-muted-foreground">
+                Your people, your agents and your projects, in one place.
               </p>
               {error ? (
                 <p className="mt-4 text-sm text-destructive">{error}</p>

@@ -240,7 +240,7 @@ export function IdentityRecoveryPairing({
       </div>
       {step === "loading" || (step === "qr" && qrUri) ? (
         <Button
-          className="w-full border-foreground/20 bg-white text-foreground shadow-none hover:bg-black/5"
+          className="w-full border-foreground/20 bg-foreground/5 text-foreground shadow-none hover:bg-foreground/10"
           data-testid="copy-identity-recovery-code"
           disabled={step === "loading"}
           onClick={() => void copyPairingCode()}
