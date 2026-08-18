@@ -167,5 +167,17 @@ test("LandingBees keeps one corner mark and no swarm", async () => {
 
   const { container } = render(React.createElement(LandingBees, {}));
 
-  assert.equal(marks(container).length, 2, "one mark, both theme variants");
+  assert.equal(
+    container.querySelectorAll("img").length,
+    1,
+    "one corner mark, no swarm",
+  );
+  // The onboarding shell paints the brand's dark ground under every theme, so
+  // its mark is the single light-on-dark bitmap rather than the html.dark
+  // variant pair, which would hide the mark outright under a light theme.
+  assert.equal(
+    marks(container).length,
+    0,
+    "corner mark should not use the theme-swap pair",
+  );
 });
