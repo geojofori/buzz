@@ -384,10 +384,23 @@ pub const MAX_SYSTEM_PROMPT_BYTES: usize = 512 * 1024;
 pub const MAX_TOOL_RESULT_BYTES: usize = 8 * 1024 * 1024;
 /// Default cap on the *text* portion of a single tool result. Oversized text
 /// is middle-elided before it enters history; without this, one fat `cat`
-/// burns the context window and forces a lossy handoff. 50 KiB matches the
-/// shell-output caps in sprout-dev-mcp, goose, and pi; codex defaults to
-/// 10 KB. Tunable via `BUZZ_AGENT_MAX_TOOL_RESULT_TEXT_BYTES`.
-pub const DEFAULT_TOOL_RESULT_TEXT_BYTES: usize = 50 * 1024;
+/// burns the context window and forces a lossy handoff.
+///
+/// 16 KiB sits between the shell-output caps in sprout-dev-mcp, goose, and pi
+/// (50 KiB) and codex (10 KB), and it is the per-turn number that matters most:
+/// every kept result is re-sent on every later turn of the same session, so the
+/// cap is paid once per turn per result, not once. Raise it with
+/// `BUZZ_AGENT_MAX_TOOL_RESULT_TEXT_BYTES` where whole-file reads matter more
+/// than context budget.
+pub const DEFAULT_TOOL_RESULT_TEXT_BYTES: usize = 16 * 1024;
+
+/// Default number of most-recent image-bearing history items that keep their
+/// image blocks in an outgoing request. Older images are replaced, at
+/// request-build time only, by a short text placeholder: an image re-enters
+/// the prompt at its full visual-token cost on every later turn, and once the
+/// turn that reasoned about it has passed the model rarely revisits it.
+/// Tunable via `BUZZ_AGENT_KEEP_RECENT_IMAGES`; `0` sends no images at all.
+pub const DEFAULT_KEEP_RECENT_IMAGES: usize = 2;
 pub const MAX_TOOL_CALLS_PER_TURN: usize = 64;
 
 pub const HANDOFF_MAX_OUTPUT_TOKENS: u32 = 8192;
@@ -521,6 +534,26 @@ pub struct Config {
     /// Databricks gateway does not auto-cache, so without this the surfaced
     /// `cache_read_input_tokens` is structurally always 0.
     pub prompt_caching: bool,
+    /// TTL stamped on every Anthropic `cache_control` marker emitted on the
+    /// first-party Anthropic route. `None` means today's shape: no `ttl` field,
+    /// which Anthropic reads as its 5-minute default.
+    ///
+    /// Parsed from `BUZZ_AGENT_CACHE_TTL` (`5m` | `1h`, default `1h`). `5m`
+    /// resolves to `None` here so the wire shape is decided once, at the parse,
+    /// rather than by a string comparison at every marker site.
+    pub cache_ttl: Option<String>,
+    /// The same knob for OpenRouter's `anthropic/*` models, parsed from
+    /// `BUZZ_AGENT_OPENROUTER_CACHE_TTL` (`5m` | `1h`, default `1h`). Kept
+    /// separate from [`Self::cache_ttl`] because it is a second vendor's
+    /// forwarding behaviour, which can regress independently of Anthropic's.
+    pub openrouter_cache_ttl: Option<String>,
+    /// Number of most-recent image-bearing history items whose image blocks
+    /// survive into the outgoing request body. Older ones are replaced by a
+    /// short text placeholder while the body is built; durable history is not
+    /// mutated, so the transcript and the handoff still hold the real images.
+    /// Set via `BUZZ_AGENT_KEEP_RECENT_IMAGES`, default
+    /// [`DEFAULT_KEEP_RECENT_IMAGES`].
+    pub keep_recent_images: usize,
 }
 
 impl Config {
@@ -632,6 +665,12 @@ impl Config {
                 env("BUZZ_AGENT_THINKING_SUMMARY").as_deref(),
             )?,
             prompt_caching: parse_env("BUZZ_AGENT_PROMPT_CACHING", 1u8)? != 0,
+            cache_ttl: parse_cache_ttl_env("BUZZ_AGENT_CACHE_TTL")?,
+            openrouter_cache_ttl: parse_cache_ttl_env("BUZZ_AGENT_OPENROUTER_CACHE_TTL")?,
+            keep_recent_images: parse_env(
+                "BUZZ_AGENT_KEEP_RECENT_IMAGES",
+                DEFAULT_KEEP_RECENT_IMAGES,
+            )?,
         };
         cfg.validate()?;
         Ok(cfg)
@@ -664,7 +703,7 @@ impl Config {
             max_sessions: 1,
             max_line_bytes: 4 * 1024 * 1024,
             max_history_bytes: 16 * 1024 * 1024,
-            max_tool_result_text_bytes: 50 * 1024,
+            max_tool_result_text_bytes: DEFAULT_TOOL_RESULT_TEXT_BYTES,
             max_context_tokens: 200_001,
             max_handoffs: 0,
             max_parallel_tools: 1,
@@ -676,6 +715,9 @@ impl Config {
             thinking_effort: None,
             thinking_summary: ThinkingSummary::Auto,
             prompt_caching: false,
+            cache_ttl: None,
+            openrouter_cache_ttl: None,
+            keep_recent_images: DEFAULT_KEEP_RECENT_IMAGES,
         }
     }
 
@@ -970,6 +1012,32 @@ fn parse_hook_servers_env(key: &str) -> HookServers {
     parse_hook_servers(env(key).as_deref())
 }
 
+fn parse_cache_ttl_env(key: &str) -> Result<Option<String>, String> {
+    parse_cache_ttl(key, env(key).as_deref())
+}
+
+/// Pure parser for the two cache-TTL knobs, exposed for unit tests.
+///
+/// Returns the string to stamp into `cache_control`, or `None` when no `ttl`
+/// field should be emitted at all. Anthropic's 5-minute cache *is* the absence
+/// of the field, so `5m` maps to `None` here rather than to `Some("5m")`: the
+/// wire shape is resolved once, at the config boundary, and no marker site has
+/// to compare strings.
+///
+/// Unset, empty and whitespace-only all take the `1h` default. An agent loop
+/// re-sends its whole prefix every turn, but the gaps between turns are tool
+/// work and human thinking time, which routinely exceed five minutes; the
+/// 1-hour cache costs 2x base input on a write against 1.25x for the 5-minute
+/// one, and is cheaper the moment it saves a single re-write.
+fn parse_cache_ttl(key: &str, raw: Option<&str>) -> Result<Option<String>, String> {
+    let trimmed = raw.unwrap_or("").trim();
+    match trimmed.to_ascii_lowercase().as_str() {
+        "" | "1h" => Ok(Some("1h".into())),
+        "5m" => Ok(None),
+        _ => Err(format!("config: {key}={trimmed} not supported (use 5m|1h)")),
+    }
+}
+
 /// Pure parser exposed for unit tests. `None` (env unset) and `Some("")`
 /// (env set but empty) both yield `HookServers::None`.
 fn parse_hook_servers(raw: Option<&str>) -> HookServers {
@@ -1084,6 +1152,45 @@ mod tests {
         // Allowed strictly only as a literal match — defense-in-depth
         // expectation for callers.
         assert!(hs.allows("*"));
+    }
+
+    #[test]
+    fn parse_cache_ttl_values() {
+        for raw in [None, Some(""), Some("  "), Some("1h"), Some(" 1H ")] {
+            assert_eq!(
+                parse_cache_ttl("K", raw),
+                Ok(Some("1h".to_owned())),
+                "raw={raw:?} must take the 1h default/value"
+            );
+        }
+        // 5m is the absence of the field, not the string "5m".
+        for raw in [Some("5m"), Some(" 5M ")] {
+            assert_eq!(parse_cache_ttl("K", raw), Ok(None), "raw={raw:?}");
+        }
+    }
+
+    #[test]
+    fn parse_cache_ttl_rejects_anything_else_by_name() {
+        let err = parse_cache_ttl("BUZZ_AGENT_CACHE_TTL", Some("10m")).unwrap_err();
+        assert!(err.contains("BUZZ_AGENT_CACHE_TTL=10m"), "{err}");
+        assert!(err.contains("use 5m|1h"), "{err}");
+        // A near-miss of the supported spelling is still a hard error, not a
+        // silent fallback: a typo that quietly bought the 5-minute cache would
+        // be invisible in every log.
+        assert!(parse_cache_ttl("K", Some("1hour")).is_err());
+        assert!(parse_cache_ttl("K", Some("0")).is_err());
+    }
+
+    /// The default is a cost decision, not an incidental constant: every kept
+    /// tool result is re-sent on every later turn of the session.
+    #[test]
+    fn tool_result_text_default_is_16_kib() {
+        assert_eq!(DEFAULT_TOOL_RESULT_TEXT_BYTES, 16 * 1024);
+        // Still inside the range `validate` accepts, so the default can never
+        // be the thing that fails startup.
+        let mut cfg = make_config_for_validation(Provider::Anthropic, None);
+        cfg.max_tool_result_text_bytes = DEFAULT_TOOL_RESULT_TEXT_BYTES;
+        assert!(cfg.validate().is_ok(), "{:?}", cfg.validate());
     }
 
     #[test]

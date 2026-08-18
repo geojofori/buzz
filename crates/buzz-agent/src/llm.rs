@@ -20,6 +20,19 @@ use crate::types::{
 const DATABRICKS_CLIENT_ID: &str = "databricks-cli";
 const DATABRICKS_OAUTH_SCOPES: &[&str] = &["all-apis", "offline_access"];
 
+/// The `provider` label the first-party Anthropic route hands to
+/// `anthropic_body` (its sibling label is `"databricks_v2"`). Named because two
+/// separate decisions key off it: the thinking-config manifest lookup and the
+/// extended cache TTL, which only the first-party route is documented to accept.
+const PROVIDER_ANTHROPIC: &str = "anthropic";
+
+/// Stand-in for an image block dropped from the request body because a newer
+/// image has superseded it. Kept short and explicit: the model needs to know an
+/// image was there and that asking for it again is possible, without being
+/// invited to reason about pixels it can no longer see.
+const IMAGE_EVICTED_PLACEHOLDER: &str =
+    "[image omitted from context: sent earlier in this session]";
+
 const MAX_LLM_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_LLM_ERROR_BODY_BYTES: usize = 4 * 1024;
 const STALL_NOTICE_THRESHOLD: std::time::Duration = std::time::Duration::from_secs(300);
@@ -96,7 +109,7 @@ impl Llm {
                         tools,
                         effective_model,
                         effort,
-                        "anthropic",
+                        PROVIDER_ANTHROPIC,
                     ),
                 )
                 .await
@@ -109,6 +122,7 @@ impl Llm {
                     cfg.thinking_effort,
                     effective_model,
                     cfg.prompt_caching,
+                    cfg.openrouter_cache_ttl.as_deref(),
                 );
                 self.post_openrouter(cfg, &body)
                     .await
@@ -570,6 +584,17 @@ fn anthropic_body(
     effort: Option<ThinkingEffort>,
     provider: &str,
 ) -> Value {
+    // Extended cache TTL is documented for the Claude API, Amazon Bedrock,
+    // Google Vertex and Microsoft Foundry. The Databricks gateway is on none of
+    // those lists, and this same builder serves its Anthropic-messages route, so
+    // the `ttl` field is confined to the first-party Anthropic route: an
+    // unrecognised field there would 400 the whole call for a saving we cannot
+    // show it delivers.
+    let cache_ttl = cfg
+        .cache_ttl
+        .as_deref()
+        .filter(|_| provider == PROVIDER_ANTHROPIC);
+    let keep_images_from = image_keep_from(history, cfg.keep_recent_images);
     let mut messages: Vec<Value> = Vec::new();
     let mut pending: Vec<Value> = Vec::new();
     let flush = |out: &mut Vec<Value>, p: &mut Vec<Value>| {
@@ -577,7 +602,7 @@ fn anthropic_body(
             out.push(json!({ "role": "user", "content": std::mem::take(p) }));
         }
     };
-    for item in history {
+    for (idx, item) in history.iter().enumerate() {
         match item {
             HistoryItem::User(text) => {
                 flush(&mut messages, &mut pending);
@@ -609,7 +634,11 @@ fn anthropic_body(
             }
             HistoryItem::ToolResult(r) => pending.push(json!({
                 "type": "tool_result", "tool_use_id": r.provider_id,
-                "content": anthropic_tool_result_content(&r.content), "is_error": r.is_error })),
+                "content": anthropic_tool_result_content(&wire_tool_result_content(
+                    &r.content,
+                    idx >= keep_images_from,
+                )),
+                "is_error": r.is_error })),
         }
     }
     flush(&mut messages, &mut pending);
@@ -617,7 +646,7 @@ fn anthropic_body(
     // so the next turn re-reads this whole prefix from cache instead of paying
     // full input price for it. See `stamp_rolling_cache_breakpoint`.
     if cfg.prompt_caching {
-        stamp_rolling_cache_breakpoint(&mut messages);
+        stamp_rolling_cache_breakpoint(&mut messages, cache_ttl);
     }
     let tools_json: Vec<Value> = tools
         .iter()
@@ -633,7 +662,7 @@ fn anthropic_body(
     // it for an empty prompt since Anthropic rejects empty text blocks.
     let system_value = if cfg.prompt_caching && !system_prompt.is_empty() {
         json!([{ "type": "text", "text": system_prompt,
-            "cache_control": { "type": "ephemeral" } }])
+            "cache_control": cache_control(cache_ttl) }])
     } else {
         json!(system_prompt)
     };
@@ -677,7 +706,7 @@ fn anthropic_body(
 ///
 /// A no-op for messages whose content is empty or whose tail block is not a
 /// JSON object.
-fn stamp_rolling_cache_breakpoint(messages: &mut [Value]) {
+fn stamp_rolling_cache_breakpoint(messages: &mut [Value], ttl: Option<&str>) {
     let n = messages.len();
     // The two most-recently-appended messages (the current turn's tool results
     // and the assistant turn before them). `checked_sub` + `flatten` skips the
@@ -689,9 +718,79 @@ fn stamp_rolling_cache_breakpoint(messages: &mut [Value]) {
             .and_then(|c| c.last_mut())
             .and_then(Value::as_object_mut)
         {
-            block.insert("cache_control".into(), json!({ "type": "ephemeral" }));
+            block.insert("cache_control".into(), cache_control(ttl));
         }
     }
+}
+
+/// The one place a `cache_control` marker is spelled. `None` emits today's
+/// shape, which Anthropic reads as its 5-minute default; `Some("1h")` asks for
+/// the extended cache. Every marker on every Anthropic-dialect route goes
+/// through here so a TTL can never be stamped on some breakpoints and not
+/// others: a mixed prefix would write two cache entries and read neither.
+fn cache_control(ttl: Option<&str>) -> Value {
+    match ttl {
+        Some(ttl) => json!({ "type": "ephemeral", "ttl": ttl }),
+        None => json!({ "type": "ephemeral" }),
+    }
+}
+
+/// Index of the oldest history item still allowed to send its images.
+///
+/// Counts image-bearing items from the newest end, so `keep_recent` is a count
+/// of *image-bearing results seen* (a result carrying several images uses one
+/// slot), not of turns: a long run of text-only results never pushes
+/// a screenshot out of context, and a burst of four screenshots in one turn
+/// does. `keep_recent == 0` returns `history.len()`, which evicts everything.
+fn image_keep_from(history: &[HistoryItem], keep_recent: usize) -> usize {
+    if keep_recent == 0 {
+        return history.len();
+    }
+    let mut seen = 0;
+    for (idx, item) in history.iter().enumerate().rev() {
+        let HistoryItem::ToolResult(r) = item else {
+            continue;
+        };
+        if !r.content.iter().any(is_image) {
+            continue;
+        }
+        seen += 1;
+        if seen == keep_recent {
+            return idx;
+        }
+    }
+    0
+}
+
+fn is_image(content: &ToolResultContent) -> bool {
+    matches!(content, ToolResultContent::Image { .. })
+}
+
+/// Tool-result content as it should ride the wire, with superseded image blocks
+/// swapped for [`IMAGE_EVICTED_PLACEHOLDER`].
+///
+/// Request-build time, not history-append time: the durable history keeps the
+/// real image, so the transcript, the handoff summariser and a later replay all
+/// still see what the tool actually returned. Borrows unless something is
+/// actually evicted, so the common path allocates nothing.
+fn wire_tool_result_content(
+    content: &[ToolResultContent],
+    keep_images: bool,
+) -> std::borrow::Cow<'_, [ToolResultContent]> {
+    if keep_images || !content.iter().any(is_image) {
+        return std::borrow::Cow::Borrowed(content);
+    }
+    std::borrow::Cow::Owned(
+        content
+            .iter()
+            .map(|c| match c {
+                ToolResultContent::Image { .. } => {
+                    ToolResultContent::Text(IMAGE_EVICTED_PLACEHOLDER.to_owned())
+                }
+                text => text.clone(),
+            })
+            .collect(),
+    )
 }
 
 fn anthropic_tool_result_content(content: &[ToolResultContent]) -> Vec<Value> {
@@ -730,7 +829,8 @@ fn openai_body(
             messages.push(json!({ "role": "user", "content": std::mem::take(pending) }));
         }
     };
-    for item in history {
+    let keep_images_from = image_keep_from(history, cfg.keep_recent_images);
+    for (idx, item) in history.iter().enumerate() {
         match item {
             HistoryItem::User(text) => {
                 flush_images(&mut messages, &mut pending_images);
@@ -777,10 +877,11 @@ fn openai_body(
                 messages.push(Value::Object(msg));
             }
             HistoryItem::ToolResult(r) => {
+                let content = wire_tool_result_content(&r.content, idx >= keep_images_from);
                 messages.push(json!({
                     "role": "tool", "tool_call_id": r.provider_id,
-                    "content": openai_tool_text_content(&r.content) }));
-                pending_images.extend(openai_image_user_content(&r.content));
+                    "content": openai_tool_text_content(&content) }));
+                pending_images.extend(openai_image_user_content(&content));
             }
         }
     }
@@ -849,7 +950,8 @@ fn responses_body(
     effort: Option<ThinkingEffort>,
 ) -> Value {
     let mut input: Vec<Value> = Vec::with_capacity(history.len());
-    for item in history {
+    let keep_images_from = image_keep_from(history, cfg.keep_recent_images);
+    for (idx, item) in history.iter().enumerate() {
         match item {
             HistoryItem::User(text) => input.push(json!({
                 "role": "user",
@@ -877,14 +979,14 @@ fn responses_body(
                 }
             }
             HistoryItem::ToolResult(r) => {
+                let content = wire_tool_result_content(&r.content, idx >= keep_images_from);
                 input.push(json!({
                     "type": "function_call_output",
                     "call_id": r.provider_id,
-                    "output": openai_tool_text_content(&r.content),
+                    "output": openai_tool_text_content(&content),
                 }));
                 // Responses takes images as `input_image` parts on a user message.
-                let images: Vec<Value> = r
-                    .content
+                let images: Vec<Value> = content
                     .iter()
                     .filter_map(|c| match c {
                         ToolResultContent::Image { data, mime_type } => Some(json!({
@@ -2479,6 +2581,7 @@ fn apply_openrouter_mutations(
     effort: Option<ThinkingEffort>,
     effective_model: &str,
     prompt_caching: bool,
+    cache_ttl: Option<&str>,
 ) {
     if let Some(obj) = body.as_object_mut() {
         // OpenRouter's Chat Completions API spells the output cap `max_tokens`;
@@ -2512,13 +2615,20 @@ fn apply_openrouter_mutations(
         // `prompt_caching` (`BUZZ_AGENT_PROMPT_CACHING`) for the same reason as
         // the native Anthropic route: these are Anthropic-dialect breakpoints on
         // an Anthropic model, so the documented kill switch must reach them too.
+        //
+        // The TTL rides along here rather than being a second decision: OpenRouter
+        // documents `"ttl": "1h"` as a supported `cache_control` field for
+        // Anthropic models and forwards it to whichever Claude provider serves the
+        // request (https://openrouter.ai/docs/features/prompt-caching, "Cache TTL
+        // Options"). It is dropped, not rejected, when a request is routed to a
+        // non-Anthropic model, and this branch already gates on `anthropic/*`.
         if prompt_caching && effective_model.starts_with("anthropic/") {
-            apply_anthropic_cache_control(obj);
+            apply_anthropic_cache_control(obj, cache_ttl);
         }
     }
 }
 
-fn apply_anthropic_cache_control(body: &mut serde_json::Map<String, Value>) {
+fn apply_anthropic_cache_control(body: &mut serde_json::Map<String, Value>, ttl: Option<&str>) {
     if let Some(messages) = body.get_mut("messages").and_then(Value::as_array_mut) {
         // Cache the system message
         if let Some(system_msg) = messages
@@ -2533,7 +2643,7 @@ fn apply_anthropic_cache_control(body: &mut serde_json::Map<String, Value>) {
                         json!([{
                             "type": "text",
                             "text": content_str,
-                            "cache_control": { "type": "ephemeral" }
+                            "cache_control": cache_control(ttl)
                         }]),
                     );
                 }
@@ -2557,7 +2667,7 @@ fn apply_anthropic_cache_control(body: &mut serde_json::Map<String, Value>) {
                         json!([{
                             "type": "text",
                             "text": content_str,
-                            "cache_control": { "type": "ephemeral" }
+                            "cache_control": cache_control(ttl)
                         }]),
                     );
                 }
@@ -2572,7 +2682,7 @@ fn apply_anthropic_cache_control(body: &mut serde_json::Map<String, Value>) {
     if let Some(tools) = body.get_mut("tools").and_then(Value::as_array_mut) {
         if let Some(last_tool) = tools.last_mut() {
             if let Some(function) = last_tool.get_mut("function").and_then(Value::as_object_mut) {
-                function.insert("cache_control".into(), json!({ "type": "ephemeral" }));
+                function.insert("cache_control".into(), cache_control(ttl));
             }
         }
     }
@@ -2604,7 +2714,7 @@ mod tests {
             max_sessions: 1,
             max_line_bytes: 1024 * 1024,
             max_history_bytes: 16 * 1024 * 1024,
-            max_tool_result_text_bytes: 50 * 1024,
+            max_tool_result_text_bytes: crate::config::DEFAULT_TOOL_RESULT_TEXT_BYTES,
             max_context_tokens: 200_000,
             max_handoffs: 1,
             max_parallel_tools: 1,
@@ -2621,6 +2731,9 @@ mod tests {
             thinking_effort: None,
             thinking_summary: ThinkingSummary::Auto,
             prompt_caching: true,
+            cache_ttl: Some("1h".into()),
+            openrouter_cache_ttl: Some("1h".into()),
+            keep_recent_images: crate::config::DEFAULT_KEEP_RECENT_IMAGES,
         }
     }
 
@@ -3510,6 +3623,245 @@ mod tests {
             body["messages"][0]["content"][0]["cache_control"]["type"],
             "ephemeral"
         );
+    }
+
+    // ---- cache TTL body-shape tests ----
+
+    /// `BUZZ_AGENT_CACHE_TTL=1h` must reach every breakpoint the request
+    /// carries, not just the static one. A prefix marked with mixed TTLs writes
+    /// two cache entries and reads neither, so a partial stamp costs more than
+    /// no stamp at all.
+    #[test]
+    fn anthropic_body_stamps_1h_ttl_on_every_marker() {
+        let body = anthropic_body(
+            &cfg(Provider::Anthropic),
+            "sys",
+            &[
+                HistoryItem::User("hello".into()),
+                HistoryItem::Assistant {
+                    text: "hi".into(),
+                    tool_calls: vec![],
+                    reasoning_details: None,
+                },
+                HistoryItem::User("more".into()),
+            ],
+            &[],
+            "claude-opus-5",
+            None,
+            PROVIDER_ANTHROPIC,
+        );
+        let want = json!({ "type": "ephemeral", "ttl": "1h" });
+        assert_eq!(body["system"][0]["cache_control"], want);
+        let msgs = body["messages"].as_array().unwrap();
+        let tail_block = |m: &Value| m["content"].as_array().unwrap().last().unwrap().clone();
+        assert_eq!(tail_block(&msgs[2])["cache_control"], want);
+        assert_eq!(tail_block(&msgs[1])["cache_control"], want);
+    }
+
+    /// `5m` is Anthropic's own default and its wire shape is the *absence* of
+    /// the field, so the body must be byte-identical to the pre-TTL one.
+    #[test]
+    fn anthropic_body_omits_ttl_field_when_configured_5m() {
+        let mut c = cfg(Provider::Anthropic);
+        c.cache_ttl = None; // what BUZZ_AGENT_CACHE_TTL=5m parses to
+        let body = anthropic_body(
+            &c,
+            "sys",
+            &[HistoryItem::User("hello".into())],
+            &[],
+            "claude-opus-5",
+            None,
+            PROVIDER_ANTHROPIC,
+        );
+        let want = json!({ "type": "ephemeral" });
+        assert_eq!(body["system"][0]["cache_control"], want);
+        assert_eq!(body["messages"][0]["content"][0]["cache_control"], want);
+    }
+
+    /// The Databricks gateway shares this builder but is on none of the
+    /// providers Anthropic documents the 1-hour cache for, so the field must
+    /// stop at the first-party route even with the knob set.
+    #[test]
+    fn anthropic_body_omits_ttl_on_the_databricks_route() {
+        let c = cfg(Provider::DatabricksV2);
+        assert!(c.cache_ttl.is_some(), "fixture must have the knob on");
+        let body = anthropic_body(
+            &c,
+            "sys",
+            &[HistoryItem::User("hello".into())],
+            &[],
+            "databricks-claude-opus-5",
+            None,
+            "databricks_v2",
+        );
+        assert_eq!(
+            body["system"][0]["cache_control"],
+            json!({ "type": "ephemeral" })
+        );
+        assert!(
+            !body.to_string().contains("\"ttl\""),
+            "no ttl anywhere on the gateway route: {body}"
+        );
+    }
+
+    // ---- image eviction body-shape tests ----
+
+    /// Four turns, each ending in an image-bearing tool result. Each image's
+    /// base64 is `img{n}`, so a serialized body says exactly which ones shipped.
+    fn four_image_history() -> Vec<HistoryItem> {
+        let mut history = Vec::new();
+        for n in 1..=4 {
+            history.push(HistoryItem::User(format!("shot {n}")));
+            history.push(HistoryItem::Assistant {
+                text: String::new(),
+                tool_calls: vec![ToolCall {
+                    provider_id: format!("toolu_{n}"),
+                    name: "dev__view_image".into(),
+                    arguments: serde_json::json!({}),
+                    provider_extra: Default::default(),
+                }],
+                reasoning_details: None,
+            });
+            history.push(HistoryItem::ToolResult(ToolResult {
+                provider_id: format!("toolu_{n}"),
+                content: vec![
+                    ToolResultContent::Text(format!("shot {n} captured")),
+                    ToolResultContent::Image {
+                        data: format!("img{n}"),
+                        mime_type: "image/png".into(),
+                    },
+                ],
+                is_error: false,
+            }));
+        }
+        history
+    }
+
+    /// Asserts the shared contract on a serialized body, whichever wire shape
+    /// produced it: the two newest images ship, the older two are gone, each
+    /// replaced by exactly one placeholder, and every result keeps its own text.
+    fn assert_only_two_newest_images(wire: &str) {
+        for stale in ["img1", "img2"] {
+            assert!(!wire.contains(stale), "{stale} must not ship: {wire}");
+        }
+        for fresh in ["img3", "img4"] {
+            assert!(wire.contains(fresh), "{fresh} must ship: {wire}");
+        }
+        assert_eq!(
+            wire.matches(IMAGE_EVICTED_PLACEHOLDER).count(),
+            2,
+            "one placeholder per evicted image: {wire}"
+        );
+        assert!(
+            wire.contains("shot 1 captured"),
+            "eviction replaces the image block only, never the result's text: {wire}"
+        );
+    }
+
+    #[test]
+    fn anthropic_body_keeps_only_the_two_most_recent_images() {
+        let body = anthropic_body(
+            &cfg(Provider::Anthropic),
+            "sys",
+            &four_image_history(),
+            &[],
+            "claude-opus-5",
+            None,
+            PROVIDER_ANTHROPIC,
+        );
+        assert_only_two_newest_images(&body.to_string());
+    }
+
+    #[test]
+    fn openai_body_keeps_only_the_two_most_recent_images() {
+        let body = openai_body(
+            &cfg(Provider::OpenAi),
+            "sys",
+            &four_image_history(),
+            &[],
+            "gpt-5.5",
+            None,
+        );
+        assert_only_two_newest_images(&body.to_string());
+    }
+
+    #[test]
+    fn responses_body_keeps_only_the_two_most_recent_images() {
+        let body = responses_body(
+            &cfg_responses(),
+            "sys",
+            &four_image_history(),
+            &[],
+            "gpt-5.5",
+            None,
+        );
+        assert_only_two_newest_images(&body.to_string());
+    }
+
+    /// The budget counts images, not turns: a long text-only tail must not
+    /// push a still-recent screenshot out of context.
+    #[test]
+    fn text_only_results_do_not_age_images_out() {
+        let mut history = four_image_history();
+        for n in 5..=9 {
+            history.push(HistoryItem::ToolResult(ToolResult {
+                provider_id: format!("toolu_{n}"),
+                content: vec![ToolResultContent::Text(format!("plain result {n}"))],
+                is_error: false,
+            }));
+        }
+        let body = anthropic_body(
+            &cfg(Provider::Anthropic),
+            "sys",
+            &history,
+            &[],
+            "claude-opus-5",
+            None,
+            PROVIDER_ANTHROPIC,
+        );
+        assert_only_two_newest_images(&body.to_string());
+    }
+
+    #[test]
+    fn keep_recent_images_zero_evicts_every_image() {
+        let mut c = cfg(Provider::Anthropic);
+        c.keep_recent_images = 0;
+        let body = anthropic_body(
+            &c,
+            "sys",
+            &four_image_history(),
+            &[],
+            "claude-opus-5",
+            None,
+            PROVIDER_ANTHROPIC,
+        );
+        let wire = body.to_string();
+        for n in 1..=4 {
+            assert!(
+                !wire.contains(&format!("img{n}")),
+                "img{n} must not ship: {wire}"
+            );
+        }
+        assert_eq!(wire.matches(IMAGE_EVICTED_PLACEHOLDER).count(), 4);
+    }
+
+    /// Eviction is a request-body concern. The durable history the caller owns
+    /// must come back untouched, or the transcript and the handoff summariser
+    /// lose an image the model genuinely saw.
+    #[test]
+    fn image_eviction_does_not_mutate_history() {
+        let history = four_image_history();
+        let before = format!("{history:?}");
+        let _ = anthropic_body(
+            &cfg(Provider::Anthropic),
+            "sys",
+            &history,
+            &[],
+            "claude-opus-5",
+            None,
+            PROVIDER_ANTHROPIC,
+        );
+        assert_eq!(before, format!("{history:?}"));
     }
 
     // ---- ThinkingEffort body-shape tests ----
@@ -6012,6 +6364,7 @@ mod tests {
             c.thinking_effort,
             "anthropic/claude-opus-4-7",
             true,
+            None,
         );
         assert_eq!(body["reasoning"]["effort"], "high");
         // `openai_body` is always called with `effort=None` on the OpenRouter
@@ -6050,7 +6403,7 @@ mod tests {
             "anthropic/claude-opus-4-7",
             None,
         );
-        apply_openrouter_mutations(&mut body, None, "anthropic/claude-opus-4-7", true);
+        apply_openrouter_mutations(&mut body, None, "anthropic/claude-opus-4-7", true, None);
         assert!(
             body.get("reasoning").is_none(),
             "reasoning must be absent when effort is None"
@@ -6082,6 +6435,7 @@ mod tests {
             c.thinking_effort,
             "anthropic/claude-opus-4-7",
             true,
+            None,
         );
         assert_eq!(body["reasoning"]["effort"], "medium");
         assert!(
@@ -6102,7 +6456,7 @@ mod tests {
             "anthropic/claude-opus-4-7",
             None,
         );
-        apply_openrouter_mutations(&mut body, None, "anthropic/claude-opus-4-7", true);
+        apply_openrouter_mutations(&mut body, None, "anthropic/claude-opus-4-7", true, None);
         assert!(body.get("reasoning").is_none());
         assert!(
             body.get("provider").is_none(),
@@ -6126,7 +6480,7 @@ mod tests {
             "anthropic/claude-opus-4-7",
             None,
         );
-        apply_openrouter_mutations(&mut body, None, "anthropic/claude-opus-4-7", false);
+        apply_openrouter_mutations(&mut body, None, "anthropic/claude-opus-4-7", false, None);
         assert!(
             !body.to_string().contains("cache_control"),
             "BUZZ_AGENT_PROMPT_CACHING=0 must suppress every breakpoint: {body}"
@@ -6154,10 +6508,66 @@ mod tests {
             "anthropic/claude-opus-4-7",
             None,
         );
-        apply_openrouter_mutations(&mut body, None, "anthropic/claude-opus-4-7", true);
+        apply_openrouter_mutations(&mut body, None, "anthropic/claude-opus-4-7", true, None);
         assert!(
             body.to_string().contains("cache_control"),
             "caching on must still emit breakpoints: {body}"
+        );
+    }
+
+    /// The OpenRouter twin of the Anthropic TTL test. OpenRouter documents
+    /// `"ttl": "1h"` as a forwarded `cache_control` field for Anthropic models
+    /// (https://openrouter.ai/docs/features/prompt-caching), and the stamp must
+    /// reach the system block, the cached user messages and the tool tail alike.
+    #[test]
+    fn openrouter_body_stamps_1h_ttl_on_every_marker() {
+        let c = cfg(Provider::OpenRouter);
+        let mut body = openai_body(
+            &c,
+            "system",
+            &[HistoryItem::User("hi".into())],
+            &tools_vec(),
+            "anthropic/claude-opus-4-7",
+            None,
+        );
+        apply_openrouter_mutations(
+            &mut body,
+            None,
+            "anthropic/claude-opus-4-7",
+            true,
+            Some("1h"),
+        );
+        let want = json!({ "type": "ephemeral", "ttl": "1h" });
+        let msgs = body["messages"].as_array().unwrap();
+        let system = msgs.iter().find(|m| m["role"] == "system").unwrap();
+        assert_eq!(system["content"][0]["cache_control"], want);
+        let user = msgs.iter().rev().find(|m| m["role"] == "user").unwrap();
+        assert_eq!(user["content"][0]["cache_control"], want);
+        let last_tool = body["tools"].as_array().unwrap().last().unwrap();
+        assert_eq!(last_tool["function"]["cache_control"], want);
+    }
+
+    /// With the OpenRouter knob at `5m` the body must keep today's shape, so a
+    /// forwarding regression at the vendor can be ruled out by config alone.
+    #[test]
+    fn openrouter_body_omits_ttl_field_when_configured_5m() {
+        let c = cfg(Provider::OpenRouter);
+        let mut body = openai_body(
+            &c,
+            "system",
+            &[HistoryItem::User("hi".into())],
+            &tools_vec(),
+            "anthropic/claude-opus-4-7",
+            None,
+        );
+        apply_openrouter_mutations(&mut body, None, "anthropic/claude-opus-4-7", true, None);
+        assert!(
+            body.to_string().contains("cache_control"),
+            "breakpoints are still emitted: {body}"
+        );
+        assert!(
+            !body.to_string().contains("\"ttl\""),
+            "no ttl field at 5m: {body}"
         );
     }
 
@@ -6166,7 +6576,7 @@ mod tests {
     #[test]
     fn openrouter_body_without_token_limit_gains_none() {
         let mut body = json!({ "model": "vendor/model", "messages": [] });
-        apply_openrouter_mutations(&mut body, None, "vendor/model", true);
+        apply_openrouter_mutations(&mut body, None, "vendor/model", true, None);
         assert!(body.get("max_tokens").is_none());
         assert!(body.get("max_completion_tokens").is_none());
     }
@@ -6501,7 +6911,7 @@ mod tests {
             "anthropic/claude-opus-4-7",
             None,
         );
-        apply_openrouter_mutations(&mut body, None, "anthropic/claude-opus-4-7", true);
+        apply_openrouter_mutations(&mut body, None, "anthropic/claude-opus-4-7", true, None);
         let messages = body["messages"].as_array().unwrap();
 
         // System message should have cache_control
@@ -6598,7 +7008,7 @@ mod tests {
             "anthropic/claude-opus-4-7",
             None,
         );
-        apply_openrouter_mutations(&mut body, None, "anthropic/claude-opus-4-7", true);
+        apply_openrouter_mutations(&mut body, None, "anthropic/claude-opus-4-7", true, None);
         let messages = body["messages"].as_array().unwrap();
 
         // Count text user messages that got cache_control

@@ -162,8 +162,12 @@ Everything is environment variables. No flags, no config files. (We are a subpro
 | `BUZZ_AGENT_MAX_PARALLEL_TOOLS` | `8` | Max concurrent tool calls per turn (1 = sequential) |
 | `BUZZ_AGENT_MAX_SESSIONS` | unlimited | Max concurrent ACP sessions. Sessions are cheap; default has no cap. |
 | `BUZZ_AGENT_MAX_LINE_BYTES` | `4194304` | 4 MiB. Hard cap on inbound JSON-RPC frames. |
-| `BUZZ_AGENT_MAX_HISTORY_BYTES` | `1048576` | 1 MiB. Old turns are evicted past this. |
-| `BUZZ_AGENT_MAX_TOOL_RESULT_TEXT_BYTES` | `51200` | 50 KiB. Per-result cap on tool-output text; oversize is middle-elided (head + tail kept) with an inline marker. Images are exempt. |
+| `BUZZ_AGENT_MAX_HISTORY_BYTES` | `16777216` | 16 MiB. Old turns are evicted past this. |
+| `BUZZ_AGENT_MAX_TOOL_RESULT_TEXT_BYTES` | `16384` | 16 KiB. Per-result cap on tool-output text; oversize is middle-elided (head + tail kept) with a marker naming how many bytes went. Images are exempt. Every kept result is re-sent on every later turn, so this is a per-turn cost, not a one-off. |
+| `BUZZ_AGENT_KEEP_RECENT_IMAGES` | `2` | How many of the most recent image-bearing tool results keep their images in the outgoing request. Older ones send `[image omitted from context: sent earlier in this session]` instead. Counted in image-bearing results (a result with several images uses one slot), not turns, and applied while the body is built: durable history keeps the real image, so transcripts and handoffs are unaffected. `0` sends no images at all. |
+| `BUZZ_AGENT_PROMPT_CACHING` | `1` | `0` removes every Anthropic `cache_control` breakpoint. Applies to all three Anthropic-dialect routes: first-party Anthropic, the Databricks v2 Claude route, and OpenRouter `anthropic/*`. |
+| `BUZZ_AGENT_CACHE_TTL` | `1h` | `5m` \| `1h`. Cache lifetime asked for on the first-party Anthropic route. `1h` stamps `"ttl": "1h"` on every breakpoint; `5m` emits no `ttl` field, which is Anthropic's default. A 1-hour cache write costs 2x base input against 1.25x for the 5-minute one, and pays for itself the first time it saves a re-write. Deliberately not sent on the Databricks route, which Anthropic does not list as supporting the extended cache. Any other value is a startup error. |
+| `BUZZ_AGENT_OPENROUTER_CACHE_TTL` | `1h` | The same knob for OpenRouter `anthropic/*` models, which [OpenRouter documents](https://openrouter.ai/docs/features/prompt-caching) as forwarding `"ttl": "1h"`. Set `5m` to fall back to today's shape if that forwarding ever regresses. |
 | `BUZZ_AGENT_REQUIRE_REPLY` | `0` (`1` on mesh) | `1` enables the [reply guard](#reply-guard) — remind the model to publish when a turn is about to end with nothing posted to Buzz. Desktop defaults it to `1` for Buzz shared-compute agents. |
 
 
@@ -311,11 +315,12 @@ The trust boundary is **the operator who launched the agent**. The harness, MCP 
 |---|---|---|
 | Inbound JSON-RPC frame | 4 MiB | `BUZZ_AGENT_MAX_LINE_BYTES` |
 | Single prompt | 1 MiB | `MAX_PROMPT_BYTES` |
-| History window | 1 MiB | `BUZZ_AGENT_MAX_HISTORY_BYTES` |
+| History window | 16 MiB | `BUZZ_AGENT_MAX_HISTORY_BYTES` |
 | LLM response body | 16 MiB | `MAX_LLM_RESPONSE_BYTES` |
 | LLM error body | 4 KiB | `MAX_LLM_ERROR_BODY_BYTES` |
 | Tool result body (total, incl. images) | 8 MiB | `MAX_TOOL_RESULT_BYTES` |
-| Tool result text | 50 KiB | `BUZZ_AGENT_MAX_TOOL_RESULT_TEXT_BYTES` |
+| Tool result text | 16 KiB | `BUZZ_AGENT_MAX_TOOL_RESULT_TEXT_BYTES` |
+| Images per request | 2 most recent | `BUZZ_AGENT_KEEP_RECENT_IMAGES` |
 | MCP servers / session | 16 | `MAX_MCP_SERVERS` |
 | Tools / session | 128 | `MAX_TOOLS_PER_SESSION` |
 | Tool description bytes | 1 KiB | `MAX_DESCRIPTION_BYTES` |

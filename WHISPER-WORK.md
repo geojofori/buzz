@@ -1,16 +1,22 @@
 # Whisper Work
 
 WhisperCreate's downstream fork of [block/buzz](https://github.com/block/buzz),
-Apache-2.0. This file records what the rename changed, what it deliberately left
-alone, and where the theme values came from.
+Apache-2.0. Upstream is adopted as reviewed, pinned commits (see
+SUNDAY-FORK.md); every downstream change lands as a small reviewable branch and
+is recorded here, one section per piece of work, written for whoever picks it
+up next, a person or an agent.
 
-The guiding rule is that **only user-visible identity changes**. Every internal
-identifier stays on upstream's names: CSS classes and data attributes
-(`buzz-*`, `data-buzz-sidebar`), TypeScript symbols, crate names, storage keys
-(`buzz-theme`, `buzz-accent-color`), environment variables (`BUZZ_*`), event
-kinds, deep-link schemes (`buzz://`), and the Flutter package name `buzz`. That
-keeps upstream merges cheap: a rebase touches copy and configuration, not
-structure.
+Sections 1 to 7 are the rename and brand work. Section 8 is the context
+budget in the buzz-agent harness. Section 9 is the Notes tab. Section 10 is
+the files panel and open-thread indicator.
+
+The guiding rule for the rename is that **only user-visible identity changes**.
+Every internal identifier stays on upstream's names: CSS classes and data
+attributes (`buzz-*`, `data-buzz-sidebar`), TypeScript symbols, crate names,
+storage keys (`buzz-theme`, `buzz-accent-color`), environment variables
+(`BUZZ_*`), event kinds, deep-link schemes (`buzz://`), and the Flutter package
+name `buzz`. That keeps upstream merges cheap: a rebase touches copy and
+configuration, not structure.
 
 ---
 
@@ -113,22 +119,22 @@ Source of truth for anything not marked INFERRED:
 |---|---|---|
 | Page ground (`--background`) | `#0F0F0F` | Design doc: footer ink |
 | Panel (`--card`, `--sidebar-background`) | `#141414` | Design doc: `--ink` |
-| Raised panel (`--popover`, `--muted`, `--accent`, `--secondary`) | `#1A1A1A` | **INFERRED** — one step above the panel, matching the brief's panel pair |
+| Raised panel (`--popover`, `--muted`, `--accent`, `--secondary`) | `#1A1A1A` | **INFERRED**: one step above the panel, matching the brief's panel pair |
 | Primary text (`--foreground`) | `#E9E5DC` | Design doc: `--bone` |
 | Raised text (`--card-foreground`, `--popover-foreground`) | `#F2EFE8` | Design doc: `--bone-2` |
-| Muted text (`--muted-foreground`) | `#9A948C` | **INFERRED** — `--ink-soft` (`#6B6660`) lifted for a dark ground. `#6B6660` on `#0F0F0F` is 3.5:1; `#9A948C` is 6.3:1, and keeps the same warm-grey channel ratios |
-| Border (`--border`, `--input`) | `#262626` | **INFERRED** — low-contrast on dark, 1.5:1 against the page ground |
-| Sidebar border | `#1F1F1F` | **INFERRED** — quieter still, so the sidebar reads as one field |
+| Muted text (`--muted-foreground`) | `#9A948C` | **INFERRED**: `--ink-soft` (`#6B6660`) lifted for a dark ground. `#6B6660` on `#0F0F0F` is 3.5:1; `#9A948C` is 6.3:1, and keeps the same warm-grey channel ratios |
+| Border (`--border`, `--input`) | `#262626` | **INFERRED**: low-contrast on dark, 1.5:1 against the page ground |
+| Sidebar border | `#1F1F1F` | **INFERRED**: quieter still, so the sidebar reads as one field |
 | Focus ring (`--ring`, `--sidebar-ring`) | `#2C4BFF` | Design doc: `--cobalt` |
 | Accent (pinned; `--primary`, `--sidebar-primary`) | `#2C4BFF` | Design doc: `--cobalt` |
 | Selected nav fill (`--buzz-active-fill`) | `#2C4BFF` | Design doc: `--cobalt` |
-| Sidebar gradient | `#1A1A1A` → `#0F0F0F` | **INFERRED** — a quiet vertical ramp replacing the bee gradient |
-| Inset content canvas (`--buzz-content-dark`) | `#141414` | **INFERRED** — the panel value, so the reading surface lifts off the gradient |
+| Sidebar gradient | `#1A1A1A` → `#0F0F0F` | **INFERRED**: a quiet vertical ramp replacing the bee gradient |
+| Inset content canvas (`--buzz-content-dark`) | `#141414` | **INFERRED**: the panel value, so the reading surface lifts off the gradient |
 | Destructive / git deleted | `#FF6B5A` | Design doc: `--coral`. This and the terminal's ANSI red are the only places coral appears |
 | Git added | `#7FD9B9` | Design doc: `--mint` |
 | Git modified | `#FFB35C` | Design doc: `--amber` |
-| Terminal ANSI blue | `#6C86FF` | **INFERRED** — cobalt lifted for legibility on `#0F0F0F` |
-| Terminal ANSI cyan | `#6FD0E0` | **INFERRED** — no cyan exists in the brand palette |
+| Terminal ANSI blue | `#6C86FF` | **INFERRED**: cobalt lifted for legibility on `#0F0F0F` |
+| Terminal ANSI cyan | `#6FD0E0` | **INFERRED**: no cyan exists in the brand palette |
 | Terminal ANSI black | `#3B3B3B` | Design doc: `--ink-2` |
 | Terminal ANSI magenta | `#9D7BFF` | Design doc: `--violet` |
 
@@ -141,15 +147,15 @@ Source of truth for anything not marked INFERRED:
 | Quiet fill (`--muted`, `--accent`, `--secondary`) | `#F2EFE8` | Design doc: `--bone-2` |
 | Primary text | `#141414` | Design doc: `--ink` |
 | Muted text | `#6B6660` | Design doc: `--ink-soft` |
-| Border (`--border`, `--input`) | `#D8D3C8` | **INFERRED** — approximately ink at 12% over bone, matching the doc's quiet-border band |
-| Sidebar border | `#DDD8CD` | **INFERRED** — the quieter end of the same band |
+| Border (`--border`, `--input`) | `#D8D3C8` | **INFERRED**: approximately ink at 12% over bone, matching the doc's quiet-border band |
+| Sidebar border | `#DDD8CD` | **INFERRED**: the quieter end of the same band |
 | Focus ring, accent, selected nav fill | `#2C4BFF` | Design doc: `--cobalt` |
-| Sidebar gradient | `#F7F5EF` → `#E9E5DC` | **INFERRED** — plinth settling into bone |
+| Sidebar gradient | `#F7F5EF` → `#E9E5DC` | **INFERRED**: plinth settling into bone |
 | Error / destructive / git deleted | `#8E3429` | Design doc: section 4.2 error text |
-| Git added | `#2E8B6B` | **INFERRED** — no light-mode green in the brand palette |
-| Git modified / ANSI yellow | `#8A5A12` | **INFERRED** — amber is unreadable on bone; darkened to hold contrast |
-| Terminal ANSI magenta | `#6B45C9` | **INFERRED** — violet darkened for a light ground |
-| Terminal ANSI cyan | `#1F6F7E` | **INFERRED** — no cyan exists in the brand palette |
+| Git added | `#2E8B6B` | **INFERRED**: no light-mode green in the brand palette |
+| Git modified / ANSI yellow | `#8A5A12` | **INFERRED**: amber is unreadable on bone; darkened to hold contrast |
+| Terminal ANSI magenta | `#6B45C9` | **INFERRED**: violet darkened for a light ground |
+| Terminal ANSI cyan | `#1F6F7E` | **INFERRED**: no cyan exists in the brand palette |
 
 ### Typography
 
@@ -178,8 +184,8 @@ suite do not (Vite's ambient `*.css` module declaration covers the specifier).
 
 Like the Buzz pair, the Whisper Work themes are not bundled Shiki grammars.
 `resolveShikiThemeName` maps them to `github-light` / `github-dark` for fenced
-code blocks. Every other colour — the UI surfaces and the whole terminal
-palette — comes from `whisper-work-theme.ts`.
+code blocks. Every other colour, the UI surfaces and the whole terminal
+palette, comes from `whisper-work-theme.ts`.
 
 ---
 
@@ -368,3 +374,272 @@ and the pulse being on by default and off under `pulse={false}`.
 | Doc comments naming `xyz.block.buzz.app` | `managed_agents/nest.rs`, `runtime/process.rs`, `runtime/instance_reaper.rs`, `runtime/tests.rs` and `commands/legacy_storage.rs` still spell it in comments and pure-function test fixtures. All still compile and pass; rewriting them buys nothing but rebase conflicts |
 | `bee-wing*` CSS in `animations.css` | Now unused. Left in place rather than widening the diff |
 | Font files in `node_modules` | Lockfile and pnpm store are ready; `corepack pnpm install` links them |
+
+---
+
+## 8. Context budget (buzz-agent harness)
+
+Every knob that bounds how many tokens a buzz-agent turn sends. The framing
+that matters: a tool result, an image or a cached prefix is not paid once, it
+is paid again on every later turn of the same session, because the whole
+history is re-sent each round. So a cap on what enters the prompt is a
+per-turn multiplier, and caching is what stops the unchanged part being
+re-billed at full price.
+
+### Per-request payload
+
+| Knob | Default | What it bounds |
+|---|---|---|
+| `BUZZ_AGENT_MAX_TOOL_RESULT_TEXT_BYTES` | `16384` (16 KiB) | Text of a single tool result. Oversize is middle-elided, head and tail kept, with a marker naming how many bytes went, so the model knows to re-run something narrower rather than trust the gap. Was 50 KiB. `crates/buzz-agent/src/config.rs:395`, elision in `crates/buzz-agent/src/mcp.rs:916`. |
+| `BUZZ_AGENT_KEEP_RECENT_IMAGES` | `2` | How many of the most recent image-bearing tool results still send their images. Older ones become `[image omitted from context: sent earlier in this session]`. Counted in image-bearing results, not turns or individual images: a result carrying several images uses one slot, and a run of text-only results never ages a screenshot out. Applied while the request body is built, so durable history keeps the real image and transcripts and handoffs are unaffected. `crates/buzz-agent/src/config.rs:403`, `crates/buzz-agent/src/llm.rs:744`. |
+| `BUZZ_AGENT_MAX_CONTEXT_TOKENS` | `200000` | The provider window the handoff gate assumes. Compaction fires when the previous request's input tokens cross 90% of it, before the next request can exceed the window and 400. Not a cap on what is sent, a trigger for summarising and starting again. `crates/buzz-agent/src/config.rs:655`, threshold in `crates/buzz-agent/src/handoff.rs:499`. |
+
+### Caching (what stops the unchanged prefix being re-billed)
+
+| Knob | Default | What it bounds |
+|---|---|---|
+| `BUZZ_AGENT_PROMPT_CACHING` | `1` | The kill switch for every Anthropic `cache_control` breakpoint: the static prefix (tools plus system) and the rolling conversation tail. Reaches all three Anthropic-dialect routes, first-party Anthropic, the Databricks v2 Claude route, and OpenRouter `anthropic/*`. `0` removes the markers, and every cached read becomes a full-price input token. `crates/buzz-agent/src/config.rs:667`. |
+| `BUZZ_AGENT_CACHE_TTL` | `1h` | How long a written cache entry lives on the first-party Anthropic route. `1h` stamps `"ttl": "1h"` on every breakpoint; `5m` emits no `ttl` field, which is Anthropic's own default. A 1-hour write costs 2x base input against 1.25x for the 5-minute one, and reads stay at 0.1x either way, so it pays for itself the first time a gap between turns exceeds five minutes. Not sent on the Databricks route, which Anthropic does not list among the providers offering the extended cache. Any value other than `5m` or `1h` is a startup error. `crates/buzz-agent/src/config.rs:1032`. |
+| `BUZZ_AGENT_OPENROUTER_CACHE_TTL` | `1h` | The same, for OpenRouter's `anthropic/*` models. OpenRouter documents `"ttl": "1h"` as a supported and forwarded `cache_control` field. Set `5m` to fall back to today's shape if that ever regresses. `crates/buzz-agent/src/llm.rs:731`. |
+
+Both TTL knobs resolve at the config boundary rather than at each marker: `5m`
+parses to `None`, which is exactly the wire shape of a 5-minute cache, so no
+call site has to compare strings and no request can end up with a TTL on some
+breakpoints and not others. A mixed prefix would write two cache entries and
+read neither, which is the one failure mode worse than not caching.
+
+### Harness level (buzz-acp, not edited here)
+
+| Knob | Default | What it bounds |
+|---|---|---|
+| `BUZZ_ACP_CONTEXT_MESSAGE_LIMIT` | `12` | How many prior Buzz messages are fetched and prepended as context for a thread reply or DM. Bounds the size of the very first prompt of a session; `0` disables the fetch, maximum 100. `crates/buzz-acp/src/config.rs:366`. |
+| `BUZZ_ACP_MAX_TURNS_PER_SESSION` | `0` (off) | Turns before the session is proactively rotated and its history dropped. With it off, rotation happens only on `MaxTokens` or `MaxTurnRequests`, so the history keeps growing until something upstream forces the issue. `crates/buzz-acp/src/config.rs:372`. |
+
+### Sources
+
+- Anthropic prompt caching, including the 1-hour duration and the pricing
+  multipliers: <https://platform.claude.com/docs/en/docs/build-with-claude/prompt-caching>
+- OpenRouter prompt caching, "Cache TTL Options":
+  <https://openrouter.ai/docs/features/prompt-caching>
+
+---
+
+## 9. Notes tab (NIP-23 long-form, kind 30023)
+
+A Notes tab in the desktop app, backed by the NIP-23 long-form notes the
+`buzz notes` CLI already reads and writes. The point of the feature is the
+handoff: George writes a note in the app, and an agent reads that same note
+from the relay with two CLI commands. Neither half owns a private store.
+
+### The event contract
+
+A note is a NIP-23 long-form event, kind `30023`. It is
+parameterized-replaceable, so the note's identity is the coordinate
+`(kind=30023, pubkey, d-tag)` and not any single event id. Saving a note
+publishes a new event at the same coordinate, and the relay serves the newest
+one.
+
+Tags, in the order both halves emit them:
+
+| Tag            | Meaning                                                       |
+| -------------- | ------------------------------------------------------------- |
+| `d`            | The slug. 1 to 80 chars, `a-z 0-9 - _ .` only.                |
+| `title`        | Required on first publish; carried forward on later saves.    |
+| `summary`      | Optional one-liner.                                           |
+| `t`            | Repeated topic tags.                                          |
+| `published_at` | Unix seconds. Set once on first publish, preserved after.     |
+
+The Markdown body is the event content.
+
+Two timestamps, deliberately distinct: `published_at` is when the note was
+first published and survives every edit, while the event's `created_at` is
+when it was last saved. The UI shows `created_at` as "updated".
+
+Both halves do a read-before-write on save. That read is what carries
+`published_at` forward and what lets an empty title mean "keep the existing
+title". Skip it and every save from the app would reset the note's
+publication date.
+
+Deletion is a NIP-09 kind `5` event carrying **only** an `a` tag with the
+coordinate (`30023:<pubkey>:<slug>`), and never an `e` tag. That is
+load-bearing rather than tidy: the relay routes to its coordinate
+soft-delete path only when the deletion has no `e` target ids. An `e` tag
+routes to the per-event path instead, leaving the live replaceable row
+intact, and the note survives its own deletion.
+
+### How an agent reads a note
+
+Two commands, no app involved:
+
+```sh
+buzz notes ls                                  # your notes, newest first, JSON
+buzz notes get --name <slug> --content-only    # just the Markdown body
+```
+
+`buzz notes ls` also takes `--author <ref>`, `--tag <t>` and `--limit N`.
+`buzz notes get` resolves either `--name <slug>` (add `--author` or
+`--latest` when a slug exists for more than one author) or `--naddr`.
+
+### Where it lives
+
+| Half    | Path                                          | Role                                       |
+| ------- | --------------------------------------------- | ------------------------------------------ |
+| CLI     | `crates/buzz-cli/src/commands/notes.rs`       | `set` / `get` / `ls` / `rm`, pure builders |
+| Desktop | `desktop/src-tauri/src/events/notes.rs`       | Pure builders and the tag parser           |
+| Desktop | `desktop/src-tauri/src/commands/notes.rs`     | Four Tauri commands, relay round trips     |
+| Desktop | `desktop/src/shared/api/notes.ts`             | Typed wrappers over `invokeTauri`          |
+| Desktop | `desktop/src/features/notes/`                 | Hooks and the two-pane `NotesView`         |
+
+The Tauri commands are `list_long_form_notes`, `get_long_form_note`,
+`set_long_form_note` and `delete_long_form_note`. They carry the `long_form`
+qualifier because the desktop already exposes a kind `1` `get_note` in
+`commands/social.rs`, and two event kinds cannot share one command name.
+
+The desktop returns the coordinate string rather than a bech32 `naddr`: it
+has no bech32 helper, and the coordinate is what an `a` tag resolves to
+anyway. Add the `naddr` field if a helper ever lands.
+
+### Known duplication, to unify later
+
+The pure event builder now exists twice: once in
+`crates/buzz-cli/src/commands/notes.rs` and once in
+`desktop/src-tauri/src/events/notes.rs`. Both encode the same carry-forward
+matrix and the same a-tag-only deletion shape, and both have their own tests
+for it.
+
+The duplication is real but not accidental. The desktop is excluded from the
+Cargo workspace and pins a different `nostr` version from the CLI, so the two
+cannot share a builder today without first reconciling that. The follow-up is
+to move the builder into one crate that both depend on, once the `nostr`
+versions converge. Until then, a change to the contract has to land in both
+files, and the tests in both files are the thing that catches a drift.
+
+---
+
+## 10. Files panel and open-thread indicator
+
+### What opens where
+
+An agent that answers with a path (`~/notes/plan.md`, `/Users/you/shot.png`,
+`file:///Users/you/report.pdf`) used to send the reader out of the app: the OS
+opener handed the file to Obsidian, Preview or a browser tab, and the reader
+lost the conversation. Those links now open in a tabbed panel on the right.
+
+- **Claimed as local files:** `file:` URLs; `~` and `~/…`; absolute paths
+  (`/Users/…`, `C:\Users\…`) whose last segment carries an extension.
+- **Left exactly as they were:** everything else. `https:`, `buzz://` deep
+  links, relative paths, `//host/share`, `~otheruser/…`, and bare absolute
+  paths with no extension (`/settings` is far likelier to be an in-app link
+  than a file). The classifier is `parseLocalFileHref` in
+  `desktop/src/features/file-viewer/lib/localFilePath.ts`; when it returns
+  `null` the old anchor renders unchanged.
+- **Rendering, by extension:** Markdown through the app's existing Markdown
+  renderer; text in a `<pre>`; images fitted to the panel; HTML in a sandboxed
+  frame with a "Show source" toggle; PDFs and unrecognised types offered to the
+  OS default app. Every tab also has an "Open externally" action.
+- **Where the panel sits:** the app shell's layout row, outboard of the whole
+  channel surface (`desktop/src/app/AppShell.tsx`). The thread panel lives
+  *inside* the channel surface, so a thread and a file can be open at once,
+  thread nearest the conversation and file outermost, so they never contend for
+  one slot. The panel renders nothing at all when no file is open, so it costs
+  no width until asked for. Its width is remembered separately from the thread
+  panel's (`buzz.desktop.file-viewer-width`).
+- **Tabs persist across channel switches:** the provider
+  (`desktop/src/features/file-viewer/FileViewerContext.tsx`) is mounted above
+  the router in `desktop/src/main.tsx`. Tabs hold local file paths, which are
+  not community-scoped, so nothing is reset on a community switch.
+
+### Security boundary
+
+One Rust module is the only door to the filesystem the panel has:
+`desktop/src-tauri/src/commands/local_files.rs`.
+
+- **Home only.** The requested path is expanded (`~` against `dirs::home_dir`),
+  required to be absolute, then `canonicalize`d, and so is the home directory,
+  before a component-wise containment test. Because canonicalisation runs
+  first, a symlink inside home that points at `/etc/passwd` is judged on its
+  target and refused. `..` traversal is refused for the same reason.
+- **Files only.** Directories, sockets and devices are refused.
+- **8 MiB ceiling.** Oversized files are refused, never truncated: a preview
+  crosses the IPC boundary as one JSON payload, so the cap bounds both the read
+  and the renderer's memory.
+- **Read only.** Nothing is executed, written or deleted. Unsupported kinds are
+  not even read; only their metadata crosses the boundary.
+- **No unscoped opener capability.** "Open externally" goes through
+  `open_local_file_externally`, which runs the same gate before handing the
+  path to the OS. The renderer is deliberately *not* granted
+  `opener:allow-open-path`, so it cannot ask the OS to open an arbitrary path.
+  (The plugin's own path scope was considered and rejected: it matches globs
+  literally, so it neither resolves symlinks nor, on Unix, matches any path
+  with a dot-component, so `~/.config/notes.md` would silently fail.)
+- **Links never carry a live href.** A claimed local-file link renders as a
+  button, not an `<a href="file://…">`, so the webview cannot navigate to a
+  `file:` URL even if a handler failed to run.
+- **One handle, checked then read.** After canonicalisation the file is opened
+  once with `O_NOFOLLOW`; the regular-file and size checks are `fstat` on that
+  handle, and the read comes from the same handle, capped at 8 MiB plus one
+  byte so a file that grows mid-read is refused. Added after the second-family
+  review (GPT-5.6 Sol, 2026-08-18) found the earlier metadata-then-`read(path)`
+  sequence racy. Residual, documented rather than hidden: a directory in the
+  path swapped for a symlink between canonicalisation and open is not detected,
+  and "Open externally" hands a pathname to LaunchServices that could be swapped
+  after the check. Both need write access inside home, which already grants
+  everything these commands can reach.
+- **Launchable kinds are never opened.** `open_local_file_externally` refuses
+  anything classified `Unsupported` (`.command`, `.app`, `.pkg`, `.dmg`,
+  `.scpt`, `.workflow` and every unknown extension), and the panel shows no
+  "open" action for them, so a link in a chat message is never one click from
+  running something. Second-family review also noted that an origin-relative
+  markdown href with an extension (`[guide](/docs/readme.md)`) is now claimed
+  as a local file; that is intended (such an href never resolved to anything
+  inside the app) and stays.
+
+### CSP delta
+
+**None. The policy in `desktop/src-tauri/tauri.conf.json` is unchanged.** What
+the existing policy already permits, and what it forces:
+
+- `img-src` already lists `data:` and `blob:`, so images render from a `data:`
+  URL with no policy change.
+- HTML renders in `<iframe sandbox="" srcdoc=…>`. A `srcdoc` document is a
+  local-scheme child that inherits the parent policy rather than being fetched,
+  so it needs no `frame-src` allowance; the empty `sandbox` gives it an opaque
+  origin with no scripts, no forms and no top-level navigation, and the
+  inherited `script-src 'self'` has nothing left to match.
+- PDFs are **not** rendered inline. `object-src 'none'` blocks `<object>` and
+  `<embed>`, and with no `frame-src` directive the policy falls back to
+  `default-src 'self'`, which blocks a `blob:` frame. Widening the policy for
+  one file type was not worth it, so PDFs get an "Open in your default app"
+  button instead; the OS viewer is better at PDFs anyway.
+
+### Thread indicator
+
+Before this change nothing in the channel timeline said which thread the
+right-hand panel had open: `TimelineMessageRow` and `MessageThreadSummaryRow`
+had no notion of the open thread at all. Two quiet markers now do, both driven
+by the same `openThreadHeadId` the thread panel reads, drilled from
+`ChannelPane` through `MessageTimeline` and `TimelineMessageList`:
+
+- `desktop/src/features/messages/ui/TimelineMessageRow.tsx`: the open thread's
+  root message gets a left accent (inset `--primary` rule, no layout shift) and
+  a faint tint.
+- `desktop/src/features/messages/ui/MessageThreadSummaryRow.tsx`: its
+  "N replies" row gains an "Open" pill and an accurate `aria-label`.
+
+### Known limits
+
+- Extensionless files (`Makefile`, `LICENSE`) classify as unsupported and are
+  offered to the OS. A `file:` URL is the way to name one deliberately.
+- A `#fragment` on a local path is treated as part of the filename, so
+  `[plan](/Users/you/plan.md#top)` will not resolve.
+- The classifier gates bare absolute paths on a file extension, so a genuine
+  extensionless file linked as a bare path keeps the old OS-opener behaviour.
+- Images are inlined as `data:` URLs; at the 8 MiB cap that is a ~11 MB string.
+  Acceptable at this ceiling, worth revisiting if the cap ever rises.
+- The sandboxed-`srcdoc` path has been reasoned from the CSP but not yet
+  observed in a running WKWebView; the per-tab "Show source" toggle is the
+  fallback if a frame ever comes back blank.
+- `desktop/src-tauri/src/lib.rs` is at the 1000-line ratchet cap. Registering
+  these two commands only fit because the three adjacent `huddle::` imports
+  were merged into one group. The next command registered there will need the
+  file split first.
