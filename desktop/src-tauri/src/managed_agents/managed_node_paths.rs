@@ -1,13 +1,27 @@
 use std::path::PathBuf;
 
+/// Directory under the platform data dir that holds the app-managed Node
+/// runtime and npm prefix.
+///
+/// This is a bare literal, not a value Tauri derives: `dirs::data_dir()` has
+/// no knowledge of `productName`, and the app-data directory Tauri resolves
+/// from the bundle identifier is a sibling of this one. It follows no
+/// upstream tool convention either, so it is renamed with the app. Any other
+/// site that needs the same directory reads this constant.
+pub(crate) const MANAGED_TOOLS_DATA_DIR: &str = "Whisper Work";
+
 pub(crate) fn buzz_managed_npm_prefix() -> Option<PathBuf> {
-    dirs::data_dir().map(|dir| dir.join("Buzz").join("node-tools"))
+    dirs::data_dir().map(|dir| dir.join(MANAGED_TOOLS_DATA_DIR).join("node-tools"))
 }
 
 const BUZZ_MANAGED_NODE_VERSION: &str = "v24.18.0";
 
 pub(crate) fn buzz_managed_node_root() -> Option<PathBuf> {
-    dirs::data_dir().map(|dir| dir.join("Buzz").join("runtimes").join("node"))
+    dirs::data_dir().map(|dir| {
+        dir.join(MANAGED_TOOLS_DATA_DIR)
+            .join("runtimes")
+            .join("node")
+    })
 }
 
 pub(crate) fn buzz_managed_node_bin_dir() -> Option<PathBuf> {

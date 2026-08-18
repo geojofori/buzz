@@ -8,7 +8,7 @@ members = ["crates/buzz-terminal"]
 [package]
 name = "buzz-desktop"
 version = "0.5.15"
-description = "Buzz desktop app"
+description = "Whisper Work desktop app"
 authors = ["you"]
 edition = "2021"
 

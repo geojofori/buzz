@@ -1,9 +1,20 @@
 use super::*;
 
-/// Binary names for the Buzz desktop/Tauri process. Used by dead-instance
+/// Binary names for the desktop/Tauri process. Used by dead-instance
 /// detection to confirm the owning desktop is still alive.
+///
+/// The executable name follows the Cargo package name (`buzz-desktop`), not
+/// `productName`: the shipped macOS bundle's `CFBundleExecutable` reads
+/// `buzz-desktop` even though `productName` is set, because
+/// `mainBinaryName` is unset in `tauri.conf.json`. Renaming the app to
+/// Whisper Work therefore did not change what `proc_name` reports; the
+/// product-name entry below is belt-and-braces for a build that does set
+/// `mainBinaryName`.
+///
+/// A false negative here reaps a live instance's agents, so the list stays
+/// permissive rather than exact.
 const DESKTOP_BINARY_NAMES: &[&str] = &[
-    "Buzz",
+    "Whisper Work",
     "buzz-desktop",
     "buzz_desktop",
     // Linux limits /proc/<pid>/comm to 15 visible bytes, truncating the
@@ -105,8 +116,8 @@ fn extract_buzz_marker_value(_pid: u32) -> Option<String> {
     None
 }
 
-/// Check if a Buzz desktop process is still alive for the given instance ID.
-/// Scans all user-owned processes named "Buzz" or "buzz-desktop" and checks
+/// Check if a desktop process is still alive for the given instance ID.
+/// Scans all user-owned processes in `DESKTOP_BINARY_NAMES` and checks
 /// whether any has the identifier in its command-line args (KERN_PROCARGS2 buffer
 /// includes both argv and environ — the `--config` JSON from `tauri dev` contains
 /// the identifier string).

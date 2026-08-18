@@ -7,6 +7,9 @@
 
 /// NIP-AM: Agent Turn Metric — payload type and encrypt/decrypt helpers.
 pub mod agent_turn_metric;
+/// Desktop bundle identifier, the single Rust-side spelling of the value in
+/// `desktop/src-tauri/tauri.conf.json`.
+pub mod app_identity;
 /// Channel and membership enums shared across crates.
 pub mod channel;
 /// NIP-AE Agent Engrams — slug grammar, conversation key, d-tag derivation,

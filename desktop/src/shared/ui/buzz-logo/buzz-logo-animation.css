@@ -11,19 +11,12 @@
 }
 
 .buzz-logo--background {
-  background-color: #d7d72e;
-  background-image: radial-gradient(
-    circle,
-    rgba(35, 30, 30, 0.16) 1.2px,
-    transparent 1.3px
-  );
-  background-position: 0 0;
-  background-size: 37px 37px;
+  background-color: var(--card);
 }
 
 .buzz-logo__mark {
   display: block;
-  inline-size: min(466px, calc(100vw - 32px));
+  inline-size: min(512px, calc(100vw - 32px));
   block-size: auto;
   overflow: visible;
 }
@@ -38,8 +31,30 @@
   max-inline-size: 100%;
 }
 
-.buzz-logo__ink {
-  fill: currentColor;
+/*
+ * Theme switching for the logomark.
+ *
+ * Both variants are always in the DOM; CSS picks one off the `dark` class the
+ * theme provider stamps on <html>. These rules are deliberately unlayered, so
+ * they beat Tailwind's `display` utilities (which live in @layer utilities)
+ * no matter what a call site passes. Only `display` and `object-fit` are set
+ * here, sizing stays with the caller's utilities.
+ */
+.whisper-mark {
+  display: block;
+  object-fit: contain;
+}
+
+.whisper-mark--dark {
+  display: none;
+}
+
+html.dark .whisper-mark--light {
+  display: none;
+}
+
+html.dark .whisper-mark--dark {
+  display: block;
 }
 
 @keyframes buzz-logo-pulse {
@@ -57,10 +72,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .buzz-logo animate {
-    display: none;
-  }
-
   .buzz-logo--pulse .buzz-logo__mark {
     animation: none;
     opacity: 0.8;

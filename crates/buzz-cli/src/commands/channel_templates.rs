@@ -15,7 +15,11 @@ use crate::error::CliError;
 /// Tauri bundle identifier for the production desktop app. `dirs::data_dir()`
 /// joined with this segment matches `app.path().app_data_dir()` exactly
 /// (Tauri resolves app-data as the platform data dir plus the identifier).
-const PROD_BUNDLE_IDENTIFIER: &str = "xyz.block.buzz.app";
+///
+/// The CLI has no `AppHandle`, so it cannot read `app.config().identifier`;
+/// it reads the shared constant instead, which is the one Rust-side spelling
+/// of the value in `desktop/src-tauri/tauri.conf.json`.
+const PROD_BUNDLE_IDENTIFIER: &str = buzz_core::app_identity::DESKTOP_APP_IDENTIFIER;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ChannelTemplateRecord {
@@ -65,7 +69,7 @@ fn default_visibility() -> String {
 ///
 /// `override_path` (from `--templates-file`) always wins — useful for the dev
 /// store or tests. Otherwise defaults to the prod bundle's app-data dir:
-/// `<platform-data-dir>/xyz.block.buzz.app/templates/channel-templates.json`.
+/// `<platform-data-dir>/<bundle-identifier>/templates/channel-templates.json`.
 pub fn resolve_templates_path(override_path: Option<&str>) -> Result<PathBuf, CliError> {
     if let Some(p) = override_path {
         return Ok(PathBuf::from(p));
@@ -143,7 +147,9 @@ mod tests {
     #[test]
     fn resolve_templates_path_defaults_to_prod_bundle() {
         let path = resolve_templates_path(None).unwrap();
-        assert!(path.ends_with("xyz.block.buzz.app/templates/channel-templates.json"));
+        assert!(path.ends_with(format!(
+            "{PROD_BUNDLE_IDENTIFIER}/templates/channel-templates.json"
+        )));
     }
 
     #[test]

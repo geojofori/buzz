@@ -1,57 +1,41 @@
-import { useId } from "react";
+import markDark from "./whisper-mark-dark.png";
+import markLight from "./whisper-mark-light.png";
+import "./buzz-logo-animation.css";
 
 /**
- * The finished Buzz mark as a plain static SVG — no SMIL, no scripting, no
- * animation machinery. Geometry matches the final keyframe of the
- * BuzzLogoAnimation morph (v8 variant), rendered in `currentColor`, so it
- * paints complete on the very first frame regardless of animation support.
+ * The WhisperCreate logomark, painted as a plain bitmap, no SMIL, no
+ * scripting, no animation machinery, so it renders complete on the very
+ * first frame regardless of animation support.
+ *
+ * Both theme variants are emitted and the inactive one is hidden in CSS
+ * (`html.dark` decides). That keeps the component synchronous: there is no
+ * theme hook to read, nothing to re-render on a theme switch, and no flash of
+ * the wrong artwork on a hard reload before scripting starts. The two files
+ * share one canvas size, so swapping between them never shifts layout.
+ *
+ * The exported name is upstream's; only the artwork changed. `className` is
+ * applied to each image rather than to a wrapper, so the sizing utilities the
+ * call sites already pass (`h-auto w-full`, `w-5`, …) keep working unchanged.
  */
 export function BuzzMark({ className }: { className?: string }) {
-  const maskId = `buzz-mark-cutouts-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const classes = ["buzz-mark", "whisper-mark", className]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <svg
-      aria-hidden="true"
-      className={["buzz-mark", className].filter(Boolean).join(" ")}
-      viewBox="0 0 466 309"
-      fill="currentColor"
-    >
-      <defs>
-        <mask
-          id={maskId}
-          x="-80"
-          y="-80"
-          width="626"
-          height="469"
-          maskUnits="userSpaceOnUse"
-          maskContentUnits="userSpaceOnUse"
-        >
-          <rect x="-80" y="-80" width="626" height="469" fill="#fff" />
-          <ellipse cx="193.3" cy="84.4" rx="27" ry="27" fill="#000" />
-          <ellipse cx="276" cy="84.4" rx="27" ry="27" fill="#000" />
-          <rect
-            x="166.3"
-            y="157.2"
-            width="136.9"
-            height="38.3"
-            rx="5"
-            fill="#000"
-          />
-          <rect
-            x="166.9"
-            y="235.1"
-            width="136.2"
-            height="37.6"
-            rx="5"
-            fill="#000"
-          />
-        </mask>
-      </defs>
-      <g mask={`url(#${maskId})`}>
-        <circle cx="91.7" cy="154.5" r="91.7" />
-        <circle cx="374.3" cy="154.5" r="91.7" />
-        <rect x="128" y="0" width="210" height="309" rx="34" />
-      </g>
-    </svg>
+    <>
+      <img
+        alt=""
+        aria-hidden="true"
+        className={`${classes} whisper-mark--light`}
+        src={markLight}
+      />
+      <img
+        alt=""
+        aria-hidden="true"
+        className={`${classes} whisper-mark--dark`}
+        src={markDark}
+      />
+    </>
   );
 }
