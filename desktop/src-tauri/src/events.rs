@@ -763,6 +763,14 @@ pub use workflows::{
     build_workflow_trigger,
 };
 
+// NIP-23 long-form notes (kind:30023). These live in their own module rather
+// than beside `build_set_canvas` because the carry-forward matrix they share
+// with `buzz notes` needs its own test block, and this file already sits just
+// under the 1000-line cap the repo enforces.
+mod notes;
+
+pub use notes::{build_rm_note, build_set_note, note_coordinate, parse_slug, NoteSnapshot};
+
 // ── Transport ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

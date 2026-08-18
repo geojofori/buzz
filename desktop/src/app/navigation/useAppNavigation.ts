@@ -70,6 +70,17 @@ export function useAppNavigation() {
     [commitNavigation],
   );
 
+  const goNotes = React.useCallback(
+    (behavior?: NavigationBehavior) =>
+      commitNavigation(
+        {
+          to: "/notes",
+        },
+        behavior,
+      ),
+    [commitNavigation],
+  );
+
   const goPulse = React.useCallback(
     (behavior?: NavigationBehavior) =>
       commitNavigation(
@@ -333,6 +344,7 @@ export function useAppNavigation() {
     goForumPost,
     goHome,
     goNewMessage,
+    goNotes,
     goProject,
     goProjects,
     goPulse,
