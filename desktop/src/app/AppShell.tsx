@@ -6,6 +6,7 @@ import { useTerminalContext } from "@/app/useTerminalContext";
 import { AppShellProvider } from "@/app/AppShellContext";
 import { AppShellOverlays, TerminalBootstrap } from "@/app/AppShellOverlays";
 import { AppShellChannelSurface } from "@/app/AppShellChannelSurface";
+import { FileViewerPanel } from "@/features/file-viewer/ui/FileViewerPanel";
 import { AppHuddleShell } from "@/app/AppHuddleShell";
 import { AppTopChrome } from "@/app/AppTopChrome";
 import { useAppNavigation } from "@/app/navigation/useAppNavigation";
@@ -903,6 +904,11 @@ export function AppShell() {
                     >
                       <Outlet />
                     </AppShellChannelSurface>
+                    {/* Outermost right-hand pane: the thread panel lives
+                        inside the channel surface, so an open file sits
+                        beside an open thread instead of replacing it.
+                        Renders nothing while no file is open. */}
+                    <FileViewerPanel />
                     {!isHuddleRoom ? (
                       <RelayConnectionOverlay
                         card={relayConnectionCard}

@@ -7,6 +7,10 @@ import {
 
 const THREAD_PANEL_WIDTH_SESSION_KEY = "buzz.desktop.thread-panel-width";
 
+/** Session key for the local-file viewer, which sits beside the thread panel
+ * and therefore keeps its own remembered width. */
+export const FILE_VIEWER_WIDTH_SESSION_KEY = "buzz.desktop.file-viewer-width";
+
 function getViewportWidth(): number {
   return typeof window === "undefined" ? 0 : window.innerWidth;
 }
@@ -23,13 +27,13 @@ function clampThreadPanelWidth(width: number): number {
   return clampAuxiliaryPanelWidth(width, getViewportWidth());
 }
 
-function getInitialThreadPanelWidth(): number {
+function getInitialThreadPanelWidth(storageKey: string): number {
   if (typeof window === "undefined") {
     return AUXILIARY_PANEL_DEFAULT_WIDTH_PX;
   }
 
   try {
-    const raw = window.sessionStorage.getItem(THREAD_PANEL_WIDTH_SESSION_KEY);
+    const raw = window.sessionStorage.getItem(storageKey);
     if (!raw) {
       return AUXILIARY_PANEL_DEFAULT_WIDTH_PX;
     }
@@ -45,13 +49,22 @@ function getInitialThreadPanelWidth(): number {
   }
 }
 
-export function useThreadPanelWidth(availableWidthPx?: number) {
+/**
+ * Remembered width for a right-hand auxiliary pane.
+ *
+ * Parameterised by storage key so a second pane (the local-file viewer) can sit
+ * beside the thread panel without the two fighting over one remembered width.
+ */
+export function useThreadPanelWidth(
+  availableWidthPx?: number,
+  storageKey: string = THREAD_PANEL_WIDTH_SESSION_KEY,
+) {
   const getAvailableWidth = React.useCallback(
     () => availableWidthPx ?? getViewportWidth(),
     [availableWidthPx],
   );
   const [widthPx, setWidthPx] = React.useState<number>(() =>
-    getInitialThreadPanelWidth(),
+    getInitialThreadPanelWidth(storageKey),
   );
 
   React.useEffect(() => {
@@ -60,14 +73,11 @@ export function useThreadPanelWidth(availableWidthPx?: number) {
     }
 
     try {
-      window.sessionStorage.setItem(
-        THREAD_PANEL_WIDTH_SESSION_KEY,
-        String(widthPx),
-      );
+      window.sessionStorage.setItem(storageKey, String(widthPx));
     } catch {
       // Ignore storage failures and keep in-memory width for this session.
     }
-  }, [widthPx]);
+  }, [storageKey, widthPx]);
 
   const onResizeStart = React.useCallback(
     (event: React.PointerEvent<HTMLButtonElement>) => {

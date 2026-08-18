@@ -628,6 +628,7 @@ export const ChannelPane = React.memo(function ChannelPane({
             }
             onTargetReached={onTargetReached}
             onToggleReaction={onToggleReaction}
+            openThreadHeadId={openThreadHeadId}
             targetMessageId={targetMessageId}
             splitThreadPanelOpen={
               useSplitAuxiliaryPane &&

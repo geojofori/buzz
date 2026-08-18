@@ -2,6 +2,8 @@ import * as React from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 
+import { parseLocalFileHref } from "@/features/file-viewer/lib/localFilePath";
+import { LocalFileLinkAnchor } from "@/features/file-viewer/ui/LocalFileLinkAnchor";
 import { cn } from "@/shared/lib/cn";
 import { copyTextToClipboard } from "@/shared/lib/clipboard";
 
@@ -20,6 +22,10 @@ import {
  * an in-app menu with "Open link" (via the OS opener, matching the anchor's
  * left-click `target="_blank"` behavior) and "Copy link" (the real href, not
  * the masked display text).
+ *
+ * A link that names a file on this machine is handed to `LocalFileLinkAnchor`
+ * instead, which opens it in the in-app viewer. Every other href keeps exactly
+ * the behavior it had before.
  */
 export function ExternalLinkAnchor({
   anchorProps,
@@ -37,6 +43,15 @@ export function ExternalLinkAnchor({
   const [menu, setMenu] = React.useState<MediaContextMenuPosition | null>(null);
   const closeMenu = React.useCallback(() => setMenu(null), []);
   useDismissMediaContextMenu(Boolean(menu), closeMenu);
+
+  // After the hooks above, so the hook order of this component never depends
+  // on the href.
+  const localFilePath = parseLocalFileHref(href);
+  if (localFilePath) {
+    return (
+      <LocalFileLinkAnchor path={localFilePath}>{children}</LocalFileLinkAnchor>
+    );
+  }
 
   const anchor = (
     <a

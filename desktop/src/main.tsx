@@ -11,6 +11,7 @@ import "@/shared/styles/globals.css";
 import { UpdaterProvider } from "@/features/settings/hooks/UpdaterProvider";
 import { migrateLegacyCommunityStorageBeforeRender } from "@/features/communities/legacyCommunityStorage";
 import { CommunitiesProvider } from "@/features/communities/useCommunities";
+import { FileViewerProvider } from "@/features/file-viewer/FileViewerContext";
 import { huddleWindowChannelId } from "@/features/huddle/lib/huddleWindow";
 import { CommunityOnboardingProvider } from "@/features/onboarding/communityOnboarding";
 import { ThemeProvider } from "@/shared/theme/ThemeProvider";
@@ -91,7 +92,12 @@ function renderApp() {
                 <EmojiBurstProvider>
                   <PoofBurstProvider>
                     <UpdaterProvider>
-                      <App />
+                      {/* Above the router: local-file tabs must survive a
+                          channel switch, which is the point of not sending
+                          the reader out to Finder. */}
+                      <FileViewerProvider>
+                        <App />
+                      </FileViewerProvider>
                       <NostrBindConsentDialog />
                     </UpdaterProvider>
                     <Toaster />

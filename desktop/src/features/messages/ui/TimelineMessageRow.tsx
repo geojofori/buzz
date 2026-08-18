@@ -72,6 +72,8 @@ type MessageRowItemProps = {
   isContinuation?: boolean;
   isFollowedByContinuation?: boolean;
   isFollowingThreadById?: (rootId: string) => boolean;
+  /** This message is the root of the thread the panel currently has open. */
+  isOpenThreadHead?: boolean;
   isUnread?: boolean;
   playEntrance?: boolean;
   onEntranceComplete?: (messageId: string) => void;
@@ -104,6 +106,7 @@ export function MessageRowItem({
   isContinuation = false,
   isFollowedByContinuation = false,
   isFollowingThreadById,
+  isOpenThreadHead = false,
   isUnread,
   playEntrance = false,
   onEntranceComplete,
@@ -137,6 +140,10 @@ export function MessageRowItem({
       <div
         className={cn(
           "group/message relative mx-1 mb-1 flex flex-col gap-0 rounded-2xl px-0 py-1 transition-colors hover:bg-muted/50 focus-within:bg-muted/50",
+          // Quiet left accent tying the row to the thread panel on the right,
+          // so the reader can see at a glance which message it belongs to.
+          isOpenThreadHead &&
+            "bg-muted/40 shadow-[inset_2px_0_0_0_hsl(var(--primary))]",
           isHighlighted &&
             "-mx-4 px-4 before:absolute before:-inset-y-1.5 before:inset-x-0 before:animate-[route-target-highlight-fade_2s_ease-out_forwards] before:bg-primary/10 before:content-[''] motion-reduce:before:animate-none sm:-mx-6 sm:px-6",
         )}
@@ -178,6 +185,7 @@ export function MessageRowItem({
         />
         <MessageThreadSummaryRow
           depth={message.depth}
+          isOpen={isOpenThreadHead}
           message={message}
           onOpenThread={onOpenThread}
           showDepthGuides={false}
@@ -198,6 +206,9 @@ export function MessageRowItem({
       className={cn(
         "flex flex-col gap-1",
         isFollowedByContinuation ? "pb-0" : "pb-2.5",
+        // Same marker as the summary branch above, for a thread opened on a
+        // message that has no replies yet and therefore renders no summary row.
+        isOpenThreadHead && "shadow-[inset_2px_0_0_0_hsl(var(--primary))]",
       )}
     >
       <MessageRow
