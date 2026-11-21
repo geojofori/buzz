@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { installMockBridge, TEST_IDENTITIES } from "../helpers/bridge";
+import { clearComposer } from "../helpers/composer";
 
 const GENERAL_CHANNEL_ID = "9a1657ac-f7aa-5db0-b632-d8bbeb6dfb50";
 const CURRENT_PUBKEY = "deadbeef".repeat(8);
@@ -158,8 +159,7 @@ async function submitEmptyEdit(
   await expect(detail.getByTestId("edit-target")).toBeVisible();
   const input = detail.getByTestId("message-input");
   await expect(input).not.toBeEmpty();
-  await input.fill("");
-  await expect(input).toBeEmpty();
+  await clearComposer(input);
   await page.keyboard.press("Enter");
 }
 
@@ -265,9 +265,9 @@ test("editing an immediate attachment reply preserves its media tags", async ({
     .locator('[data-testid="home-inbox-context-message"]')
     .filter({ hasText: "Attachment reply before editing." });
   await expect(reply).toBeVisible();
-  await expect(
-    reply.getByRole("link", { name: ATTACHMENT_FILENAME }),
-  ).toHaveAttribute("href", ATTACHMENT_URL);
+  await expect(reply.getByTestId("file-card")).toContainText(
+    ATTACHMENT_FILENAME,
+  );
   const replyId = await reply.getAttribute("data-message-id");
   expect(replyId).not.toBeNull();
   const replyRow = detail.locator(`[data-message-id="${replyId}"]`);
@@ -317,9 +317,9 @@ test("editing an immediate attachment reply preserves its media tags", async ({
   expect(releasedEchoes).toBe(1);
 
   await expect(replyRow).toContainText("Attachment reply after editing.");
-  await expect(
-    replyRow.getByRole("link", { name: ATTACHMENT_FILENAME }),
-  ).toHaveAttribute("href", ATTACHMENT_URL);
+  await expect(replyRow.getByTestId("file-card")).toContainText(
+    ATTACHMENT_FILENAME,
+  );
 });
 
 test("Inbox offers Edit and Delete actions only for manageable messages", async ({

@@ -1,12 +1,17 @@
+import 'dart:async';
+
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../shared/mentions/mention_tags.dart';
 import '../../shared/relay/relay.dart';
 import '../channels/channel_management_provider.dart';
-import '../profile/user_cache_provider.dart';
-import '../profile/user_profile.dart';
+import '../../shared/profile/user_cache_provider.dart';
+import '../../shared/profile/user_profile.dart';
 import 'channel.dart';
+import 'me/me_messages_provider.dart';
 import 'channel_messages_provider.dart';
 import 'message_mention_pubkeys.dart';
+import 'local_message_send_animation_provider.dart';
 
 /// Sends messages by signing an event with the user's nsec and publishing it
 /// over the relay's NIP-42-authenticated WebSocket session.
@@ -15,6 +20,8 @@ class SendMessage {
   final Future<List<ChannelMember>> Function(String channelId) _fetchMembers;
   final Map<String, UserProfile> Function() _readUserCache;
   final void Function(String channelId, NostrEvent event) _addLocalMessage;
+  final void Function(String channelId, String eventId)
+  _markLocalMessageForAnimation;
   final void Function(String channelId, String eventId) _completeLocalMessage;
   final void Function(String channelId, String eventId) _removeLocalMessage;
   final bool Function()? _isDeliveryValid;
@@ -25,6 +32,8 @@ class SendMessage {
     fetchMembers,
     required Map<String, UserProfile> Function() readUserCache,
     required void Function(String channelId, NostrEvent event) addLocalMessage,
+    void Function(String channelId, String eventId)?
+    markLocalMessageForAnimation,
     required void Function(String channelId, String eventId)
     completeLocalMessage,
     required void Function(String channelId, String eventId) removeLocalMessage,
@@ -33,6 +42,8 @@ class SendMessage {
        _fetchMembers = fetchMembers,
        _readUserCache = readUserCache,
        _addLocalMessage = addLocalMessage,
+       _markLocalMessageForAnimation =
+           markLocalMessageForAnimation ?? ((_, _) {}),
        _completeLocalMessage = completeLocalMessage,
        _removeLocalMessage = removeLocalMessage,
        _isDeliveryValid = isDeliveryValid;
@@ -43,7 +54,10 @@ class SendMessage {
   /// If [rootEventId] is null it defaults to [parentEventId] (direct reply to
   /// thread head). Tags are built to match the desktop's `buildReplyTags`
   /// convention with `root` / `reply` markers. Pass [mediaTags] to append
-  /// relay-validated `imeta` tags and NIP-30 `emoji` tags.
+  /// relay-validated `imeta` tags and NIP-30 `emoji` tags. [mayPublish] is
+  /// asked after every wait, once the event is signed and shown locally and
+  /// right before it is published; when it says no, nothing is published,
+  /// the local message is removed and this throws.
   Future<void> call({
     required String channelId,
     required String content,
@@ -52,6 +66,9 @@ class SendMessage {
     List<String>? mentionPubkeys,
     Channel? channel,
     List<List<String>> mediaTags = const [],
+    FutureOr<void> Function(NostrEvent)? beforePublish,
+    void Function()? validateDelivery,
+    Future<bool> Function()? mayPublish,
   }) async {
     _ensureDeliveryValid();
     // Use explicitly passed pubkeys, or resolve @mentions against
@@ -80,11 +97,28 @@ class SendMessage {
         if (seenMentions.add(pk.toLowerCase())) pk,
     ];
 
+    // Two-field `mention` tags are references; they go through the same
+    // writer as recipients so a bad key rejects the message.
+    bool isReference(List<String> tag) =>
+        tag.length == 2 && tag[0] == 'mention';
+    final references = [
+      for (final tag in mediaTags)
+        if (isReference(tag)) tag[1],
+    ];
+    final mentionTags = writeMentionTags(
+      recipients: normalizedMentions,
+      references: references,
+      members: normalizedMentions.isEmpty
+          ? const {}
+          : await _recipientMembers(channelId, dmRecipientPubkeys, selfLower),
+    );
+
     final tags = <List<String>>[
       ['h', channelId],
       if (parentEventId != null) ..._buildReplyTags(parentEventId, rootEventId),
-      for (final pk in normalizedMentions) ['p', pk],
-      ...mediaTags,
+      ...mentionTags,
+      for (final tag in mediaTags)
+        if (!isReference(tag)) tag,
     ];
 
     _ensureDeliveryValid();
@@ -94,10 +128,15 @@ class SendMessage {
         kind: EventKind.streamMessage,
         content: content,
         tags: tags,
-        onSigned: (event) {
+        onSigned: (event) async {
+          await beforePublish?.call(event);
+          _ensureDeliveryValid();
+          validateDelivery?.call();
           localMessage = event;
+          _markLocalMessageForAnimation(channelId, event.id);
           _addLocalMessage(channelId, event);
         },
+        mayPublish: mayPublish,
       );
       final event = localMessage;
       if (event != null) _completeLocalMessage(channelId, event.id);
@@ -127,20 +166,33 @@ class SendMessage {
     }
 
     final author = authorPubkey?.toLowerCase();
-    final participants = members != null && members.isNotEmpty
-        ? members.map((member) => member.pubkey)
-        : channel.participantPubkeys;
     return {
-      for (final participant in participants)
+      for (final participant in dmParticipantPubkeys(channel, members))
         if (participant.trim().isNotEmpty &&
             participant.toLowerCase() != author)
           participant.toLowerCase(),
     };
   }
 
+  /// Keys that can be recipients: DM participants, or the channel's current
+  /// members. The sender always counts as a member.
+  Future<Set<String>> _recipientMembers(
+    String channelId,
+    Set<String>? dmRecipientPubkeys,
+    String? self,
+  ) async {
+    final members =
+        dmRecipientPubkeys ??
+        {
+          for (final member in await _fetchMembers(channelId))
+            member.pubkey.toLowerCase(),
+        };
+    return {...members, ?self};
+  }
+
   void _ensureDeliveryValid() {
     if (_isDeliveryValid?.call() == false) {
-      throw StateError(
+      throw ActiveCommunityChangedError(
         'Message delivery cancelled because the active community changed',
       );
     }
@@ -217,7 +269,15 @@ class SendMessage {
   }
 }
 
-final sendMessageProvider = Provider<SendMessage>((ref) {
+final sendMessageProvider = Provider<SendMessage>((ref) => _sender(ref));
+
+/// Shares signing and delivery with channels, with Me's flat optimistic reader.
+final meSendMessageProvider = Provider<SendMessage>(
+  (ref) => _sender(ref, personal: true),
+);
+
+SendMessage _sender(Ref ref, {bool personal = false}) {
+  final messages = personal ? meMessagesProvider : channelMessagesProvider;
   final config = ref.watch(relayConfigProvider);
   return SendMessage(
     signedEventRelay: SignedEventRelay(
@@ -227,19 +287,19 @@ final sendMessageProvider = Provider<SendMessage>((ref) {
     fetchMembers: (channelId) =>
         ref.read(channelMembersProvider(channelId).future),
     readUserCache: () => ref.read(userCacheProvider),
-    addLocalMessage: (channelId, event) => ref
-        .read(channelMessagesProvider(channelId).notifier)
-        .addLocalMessage(event),
-    completeLocalMessage: (channelId, eventId) => ref
-        .read(channelMessagesProvider(channelId).notifier)
-        .completeLocalMessage(eventId),
-    removeLocalMessage: (channelId, eventId) => ref
-        .read(channelMessagesProvider(channelId).notifier)
-        .removeLocalMessage(eventId),
+    addLocalMessage: (channelId, event) =>
+        ref.read(messages(channelId).notifier).addLocalMessage(event),
+    markLocalMessageForAnimation: (channelId, eventId) => ref
+        .read(localMessageSendAnimationProvider(channelId).notifier)
+        .mark(eventId),
+    completeLocalMessage: (channelId, eventId) =>
+        ref.read(messages(channelId).notifier).completeLocalMessage(eventId),
+    removeLocalMessage: (channelId, eventId) =>
+        ref.read(messages(channelId).notifier).removeLocalMessage(eventId),
     isDeliveryValid: () {
       final currentConfig = ref.read(relayConfigProvider);
       return currentConfig.baseUrl == config.baseUrl &&
           currentConfig.nsec == config.nsec;
     },
   );
-});
+}

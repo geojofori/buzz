@@ -1,21 +1,25 @@
 part of '../compose_bar.dart';
 
-class _ComposeBarLayout extends StatelessWidget {
+class _ComposeBarLayout extends HookWidget {
+  final GlobalKey surfaceKey;
+  final Widget? voiceNoteRecorder;
+  final bool keyboardToolbar;
+  final VoidCallback? onTextTap;
   final List<_PendingAttachment> attachments;
   final ValueChanged<int> onRemoveAttachment;
   final String? uploadError;
   final bool isExpanded;
-  final TextEditingController controller;
+  final _MarkdownEditingController controller;
   final FocusNode focusNode;
   final EditableTextContextMenuBuilder contextMenuBuilder;
   final ValueChanged<KeyboardInsertedContent> onContentInserted;
   final VoidCallback onSend;
+  final KeyEventResult Function(FocusNode, KeyEvent) onKeyEvent;
   final String resolvedHint;
   final _AttachmentSurface attachmentSurface;
   final ValueChanged<BuildContext> onAttachmentTap;
   final VoidCallback onExpand;
-  final double expansionValue;
-  final double expansionProgress;
+  final Animation<double> expansionAnimation;
   final bool formattingOpen;
   final VoidCallback onCloseFormatting;
   final Duration motionDuration;
@@ -24,12 +28,18 @@ class _ComposeBarLayout extends StatelessWidget {
   final VoidCallback onMention;
   final VoidCallback onChannel;
   final VoidCallback onEmoji;
+  final VoidCallback onVoiceNote;
   final VoidCallback onOpenFormatting;
   final bool canSend;
   final bool hasPendingUploads;
   final bool isSending;
+  final bool readOnly;
 
   const _ComposeBarLayout({
+    required this.surfaceKey,
+    required this.voiceNoteRecorder,
+    this.keyboardToolbar = false,
+    this.onTextTap,
     required this.attachments,
     required this.onRemoveAttachment,
     required this.uploadError,
@@ -39,12 +49,12 @@ class _ComposeBarLayout extends StatelessWidget {
     required this.contextMenuBuilder,
     required this.onContentInserted,
     required this.onSend,
+    required this.onKeyEvent,
     required this.resolvedHint,
     required this.attachmentSurface,
     required this.onAttachmentTap,
     required this.onExpand,
-    required this.expansionValue,
-    required this.expansionProgress,
+    required this.expansionAnimation,
     required this.formattingOpen,
     required this.onCloseFormatting,
     required this.motionDuration,
@@ -53,81 +63,113 @@ class _ComposeBarLayout extends StatelessWidget {
     required this.onMention,
     required this.onChannel,
     required this.onEmoji,
+    required this.onVoiceNote,
     required this.onOpenFormatting,
     required this.canSend,
     required this.hasPendingUploads,
     required this.isSending,
+    this.readOnly = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return _DragDownToDismissKeyboard(child: _buildBar(context));
+    final recordingTransition = useAnimationController(
+      duration: motionDuration,
+      reverseDuration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 140),
+      initialValue: voiceNoteRecorder == null ? 0 : 1,
+    );
+    useEffect(() {
+      if (voiceNoteRecorder == null) {
+        recordingTransition.reverse();
+      } else {
+        recordingTransition.forward();
+      }
+      return null;
+    }, [voiceNoteRecorder != null, motionDuration]);
+    return _DragDownToDismissKeyboard(
+      child: _buildBar(context, recordingTransition),
+    );
   }
 
-  Widget _buildBar(BuildContext context) {
+  Widget _buildBar(
+    BuildContext context,
+    Animation<double> recordingTransition,
+  ) {
     final trimmedDraft = controller.text.trim();
     final collapsedText = trimmedDraft.isEmpty
         ? resolvedHint
         : trimmedDraft.replaceAll(RegExp(r'\s+'), ' ');
-    final composerRadius =
-        Radii.dialog + Grid.quarter * (1 - expansionProgress);
-    return Container(
-      key: const ValueKey('composer-surface'),
-      decoration: BoxDecoration(
-        color: context.colors.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(composerRadius),
-        border: Border.all(
-          color: Colors.black.withValues(alpha: 0.04),
-          width: 1,
-        ),
+    final hasVoiceNoteAttachment = attachments.any(
+      (attachment) => attachment.kind == _PendingAttachmentKind.voiceNote,
+    );
+    final composerContent = Column(
+      key: ValueKey(
+        hasVoiceNoteAttachment
+            ? 'composer-voice-note-preview-content'
+            : 'composer-standard-content',
       ),
-      padding: const EdgeInsets.all(Grid.xxs),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (attachments.isNotEmpty) ...[
-            _AttachmentStrip(
-              attachments: attachments,
-              onRemove: onRemoveAttachment,
-            ),
-            const SizedBox(height: Grid.xxs),
-          ],
-          if (uploadError case final error?) ...[
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                error,
-                style: context.textTheme.bodySmall?.copyWith(
-                  color: context.colors.error,
-                ),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (attachments.isNotEmpty) ...[
+          _AttachmentStrip(
+            attachments: attachments,
+            onRemove: onRemoveAttachment,
+          ),
+          const SizedBox(height: Grid.xxs),
+        ],
+        if (uploadError case final error?) ...[
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              error,
+              style: context.textTheme.bodySmall?.copyWith(
+                color: context.colors.error,
               ),
             ),
-            const SizedBox(height: Grid.xxs),
-          ],
-          // Keep the default state out of the focus system entirely so
-          // restored native focus cannot expand a newly opened channel.
-          if (isExpanded)
-            resizeDuration == Duration.zero
-                ? KeyedSubtree(
-                    key: const ValueKey('composer-text-height-motion'),
-                    child: _buildTextField(context),
-                  )
-                : AnimatedSize(
-                    key: const ValueKey('composer-text-height-motion'),
-                    alignment: Alignment.topCenter,
-                    duration: resizeDuration,
-                    curve: Curves.easeOutCubic,
-                    child: _buildTextField(context),
-                  )
-          else
-            Row(
+          ),
+          const SizedBox(height: Grid.xxs),
+        ],
+        // Keep the default state out of the focus system entirely so
+        // restored native focus cannot expand a newly opened channel.
+        if (isExpanded && keyboardToolbar)
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 28),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                _AttachmentTrigger(
-                  surface: attachmentSurface,
-                  formattingOpen: false,
-                  onTap: onAttachmentTap,
-                ),
-                const SizedBox(width: Grid.xxs),
+                Expanded(child: _buildTextField(context)),
+                _IosEmptyComposerActions(onEmoji: onEmoji, enabled: !readOnly),
+              ],
+            ),
+          )
+        else if (isExpanded)
+          resizeDuration == Duration.zero
+              ? KeyedSubtree(
+                  key: const ValueKey('composer-text-height-motion'),
+                  child: _buildTextField(context),
+                )
+              : AnimatedSize(
+                  key: const ValueKey('composer-text-height-motion'),
+                  alignment: Alignment.topCenter,
+                  duration: resizeDuration,
+                  curve: Curves.easeOutCubic,
+                  child: _buildTextField(context),
+                )
+        else
+          ConstrainedBox(
+            constraints: BoxConstraints(minHeight: keyboardToolbar ? 28 : 0),
+            child: Row(
+              children: [
+                if (!keyboardToolbar) ...[
+                  _AttachmentTrigger(
+                    surface: attachmentSurface,
+                    formattingOpen: false,
+                    onTap: onAttachmentTap,
+                  ),
+                  const SizedBox(width: Grid.xxs),
+                ],
                 Expanded(
                   child: Semantics(
                     button: true,
@@ -136,8 +178,9 @@ class _ComposeBarLayout extends StatelessWidget {
                       behavior: HitTestBehavior.opaque,
                       onTap: () => _runComposerAction(onExpand),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: Grid.half,
+                        padding: EdgeInsets.symmetric(
+                          vertical: keyboardToolbar ? 0 : Grid.half,
+                          horizontal: keyboardToolbar ? Grid.half : 0,
                         ),
                         child: Align(
                           alignment: Alignment.centerLeft,
@@ -156,104 +199,224 @@ class _ComposeBarLayout extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: Grid.xxs),
-                _SendButton(
-                  isDisabled: !canSend || hasPendingUploads,
-                  isSending: isSending,
-                  onTap: onSend,
+                if (keyboardToolbar) ...[
+                  _IosEmptyComposerActions(
+                    onEmoji: onEmoji,
+                    enabled: !readOnly,
+                  ),
+                ] else ...[
+                  const SizedBox(width: Grid.xxs),
+                  _SendButton(
+                    isDisabled: !canSend || hasPendingUploads,
+                    isSending: isSending,
+                    onTap: onSend,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        if (!keyboardToolbar)
+          _ExpandedComposerActionsMotion(
+            animation: expansionAnimation,
+            isExpanded: isExpanded,
+            child: Column(
+              children: [
+                const SizedBox(height: Grid.xxs),
+                Row(
+                  children: [
+                    _AttachmentTrigger(
+                      surface: attachmentSurface,
+                      formattingOpen: formattingOpen,
+                      onTap: (triggerContext) {
+                        if (formattingOpen) {
+                          onCloseFormatting();
+                        } else {
+                          onAttachmentTap(triggerContext);
+                        }
+                      },
+                    ),
+                    const SizedBox(width: Grid.half),
+                    Expanded(
+                      child: AnimatedSwitcher(
+                        duration: motionDuration,
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        layoutBuilder: (currentChild, previousChildren) =>
+                            Stack(
+                              alignment: Alignment.centerLeft,
+                              children: [...previousChildren, ?currentChild],
+                            ),
+                        child: formattingOpen
+                            ? _FormattingToolbar(onFormat: onFormat)
+                            : Row(
+                                key: const ValueKey('standard-actions'),
+                                children: [
+                                  _ComposeAction(
+                                    icon: BuzzIcons.atSign,
+                                    onTap: onMention,
+                                  ),
+                                  _ComposeAction(
+                                    icon: BuzzIcons.hash,
+                                    onTap: onChannel,
+                                  ),
+                                  _ComposeAction(
+                                    icon: BuzzIcons.smilePlus,
+                                    onTap: onEmoji,
+                                  ),
+                                  _ComposeAction(
+                                    icon: BuzzIcons.aLargeSmall,
+                                    onTap: onOpenFormatting,
+                                  ),
+                                  const Spacer(),
+                                  _SendButton(
+                                    isDisabled: !canSend || hasPendingUploads,
+                                    isSending: isSending,
+                                    onTap: onSend,
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ClipRect(
-            child: Align(
-              alignment: Alignment.topCenter,
-              heightFactor: expansionValue,
-              child: IgnorePointer(
-                ignoring: !isExpanded,
-                child: Opacity(
-                  opacity: expansionProgress,
-                  child: Transform.translate(
-                    offset: Offset(0, Grid.xxs * (1 - expansionProgress)),
-                    child: Column(
-                      children: [
-                        const SizedBox(height: Grid.xxs),
-                        Row(
-                          children: [
-                            _AttachmentTrigger(
-                              surface: attachmentSurface,
-                              formattingOpen: formattingOpen,
-                              onTap: (triggerContext) {
-                                if (formattingOpen) {
-                                  onCloseFormatting();
-                                } else {
-                                  onAttachmentTap(triggerContext);
-                                }
-                              },
-                            ),
-                            const SizedBox(width: Grid.half),
-                            Expanded(
-                              child: AnimatedSwitcher(
-                                duration: motionDuration,
-                                switchInCurve: Curves.easeOutCubic,
-                                switchOutCurve: Curves.easeInCubic,
-                                layoutBuilder:
-                                    (currentChild, previousChildren) => Stack(
-                                      alignment: Alignment.centerLeft,
-                                      children: [
-                                        ...previousChildren,
-                                        ?currentChild,
-                                      ],
-                                    ),
-                                child: formattingOpen
-                                    ? _FormattingToolbar(onFormat: onFormat)
-                                    : Row(
-                                        key: const ValueKey('standard-actions'),
-                                        children: [
-                                          _ComposeAction(
-                                            icon: LucideIcons.atSign,
-                                            onTap: onMention,
-                                          ),
-                                          _ComposeAction(
-                                            icon: LucideIcons.hash,
-                                            onTap: onChannel,
-                                          ),
-                                          _ComposeAction(
-                                            icon: LucideIcons.smilePlus,
-                                            onTap: onEmoji,
-                                          ),
-                                          _ComposeAction(
-                                            icon: LucideIcons.aLargeSmall,
-                                            onTap: onOpenFormatting,
-                                          ),
-                                          const Spacer(),
-                                          _SendButton(
-                                            isDisabled:
-                                                !canSend || hasPendingUploads,
-                                            isSending: isSending,
-                                            onTap: onSend,
-                                          ),
-                                        ],
-                                      ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+          ),
+      ],
+    );
+    final contentMotionDuration = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 140);
+    final content = ClipRect(
+      child: AnimatedSwitcher(
+        key: const ValueKey('composer-content-morph'),
+        duration: contentMotionDuration,
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeOutCubic,
+        layoutBuilder: (currentChild, previousChildren) => Stack(
+          alignment: Alignment.bottomCenter,
+          children: [...previousChildren, ?currentChild],
+        ),
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SizeTransition(
+            sizeFactor: animation,
+            alignment: Alignment.bottomCenter,
+            child: child,
+          ),
+        ),
+        child: voiceNoteRecorder == null
+            ? composerContent
+            : KeyedSubtree(
+                key: const ValueKey('composer-voice-note-content'),
+                child: voiceNoteRecorder!,
+              ),
+      ),
+    );
+    return AnimatedBuilder(
+      animation: Listenable.merge([expansionAnimation, recordingTransition]),
+      child: content,
+      builder: (context, child) {
+        final progress = expansionAnimation.value.clamp(0.0, 1.0).toDouble();
+        final usesCapsule =
+            (!isExpanded || controller.text.isEmpty) &&
+            attachments.isEmpty &&
+            uploadError == null;
+        final composerRadius =
+            defaultTargetPlatform == TargetPlatform.iOS && usesCapsule
+            ? Radii.full
+            : Radii.dialog + Grid.quarter * (1 - progress);
+        final radius = BorderRadius.lerp(
+          BorderRadius.circular(composerRadius),
+          BorderRadius.circular(Radii.full),
+          Curves.easeInOutCubic.transform(recordingTransition.value),
+        )!;
+        final usesIosConcentricSurface =
+            defaultTargetPlatform == TargetPlatform.iOS;
+        final voiceNoteInsetProgress = hasVoiceNoteAttachment
+            ? 1.0
+            : recordingTransition.value;
+        final composer = KeyedSubtree(
+          key: surfaceKey,
+          child: Container(
+            key: const ValueKey('composer-surface'),
+            decoration: BoxDecoration(
+              color: usesIosConcentricSurface
+                  ? Colors.transparent
+                  : context.colors.surfaceContainerHighest,
+              borderRadius: radius,
+              border: Border.all(
+                color: Colors.black.withValues(alpha: 0.04),
+                width: 1,
               ),
             ),
+            padding: EdgeInsets.symmetric(
+              horizontal: Grid.xxs + Grid.half * voiceNoteInsetProgress,
+              vertical:
+                  (usesIosConcentricSurface ? 5 : Grid.xxs) +
+                  Grid.half * voiceNoteInsetProgress,
+            ),
+            child: child,
           ),
-        ],
-      ),
+        );
+        if (!usesIosConcentricSurface) return composer;
+        final iosComposer = ConcentricSheetSurface(
+          key: const ValueKey('composer-ios-concentric-surface'),
+          animateGeometry: true,
+          enabled: true,
+          usesGlass: true,
+          capsule: usesCapsule,
+          color: context.colors.surfaceContainerHighest,
+          padding: EdgeInsets.zero,
+          providesSheetSurface: false,
+          minimumRadius: radius.topLeft.x,
+          contentClipRadius: radius.topLeft.x,
+          child: composer,
+        );
+        if (voiceNoteRecorder != null || recordingTransition.value > 0.001) {
+          return iosComposer;
+        }
+        return _IosComposerControls(
+          showSend:
+              controller.text.isNotEmpty ||
+              attachments.isNotEmpty ||
+              hasPendingUploads ||
+              isSending,
+          isSending: isSending,
+          canSend: canSend && !hasPendingUploads && !readOnly,
+          enabled: !readOnly,
+          onAttachments: onAttachmentTap,
+          attachmentSurface: attachmentSurface,
+          onSend: onSend,
+          onVoiceNote: onVoiceNote,
+          child: iosComposer,
+        );
+      },
     );
   }
 
   Widget _buildTextField(BuildContext context) {
+    return Actions(
+      actions: {
+        UndoTextIntent: _ComposerHistoryAction<UndoTextIntent>(controller),
+        RedoTextIntent: _ComposerHistoryAction<RedoTextIntent>(controller),
+      },
+      child: Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: onKeyEvent,
+        child: _buildEditableField(context),
+      ),
+    );
+  }
+
+  Widget _buildEditableField(BuildContext context) {
     return TextField(
+      onTap: onTextTap,
       controller: controller,
       focusNode: focusNode,
+      readOnly: readOnly,
+      inputFormatters: [_ComposerChipEditingFormatter(controller)],
       keyboardType: TextInputType.multiline,
       textInputAction: TextInputAction.newline,
       contextMenuBuilder: contextMenuBuilder,
@@ -263,6 +426,7 @@ class _ComposeBarLayout extends StatelessWidget {
       magnifierConfiguration: defaultTargetPlatform == TargetPlatform.iOS
           ? TextMagnifierConfiguration.disabled
           : null,
+      stylusHandwritingEnabled: stylusHandwritingEnabledFor(controller.text),
       contentInsertionConfiguration: ContentInsertionConfiguration(
         allowedMimeTypes: _pastedImageMimeTypes,
         onContentInserted: onContentInserted,
@@ -272,18 +436,59 @@ class _ComposeBarLayout extends StatelessWidget {
       style: context.textTheme.bodyLarge,
       decoration: InputDecoration(
         hintText: resolvedHint,
+        hintMaxLines: 1,
         hintStyle: context.textTheme.bodyLarge?.copyWith(
           color: context.colors.onSurfaceVariant,
         ),
         border: InputBorder.none,
         enabledBorder: InputBorder.none,
         focusedBorder: InputBorder.none,
-        contentPadding: const EdgeInsets.symmetric(
+        contentPadding: EdgeInsets.symmetric(
           horizontal: Grid.half,
-          vertical: Grid.half,
+          vertical: keyboardToolbar ? 0 : Grid.half,
         ),
         isDense: true,
       ),
+    );
+  }
+}
+
+class _ExpandedComposerActionsMotion extends StatelessWidget {
+  final Animation<double> animation;
+  final bool isExpanded;
+  final Widget child;
+
+  const _ExpandedComposerActionsMotion({
+    required this.animation,
+    required this.isExpanded,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        final value = animation.value;
+        final progress = value.clamp(0.0, 1.0).toDouble();
+        return ClipRect(
+          child: Align(
+            alignment: Alignment.topCenter,
+            heightFactor: value,
+            child: IgnorePointer(
+              ignoring: !isExpanded,
+              child: Opacity(
+                opacity: progress,
+                child: Transform.translate(
+                  offset: Offset(0, Grid.xxs * (1 - progress)),
+                  child: child,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
